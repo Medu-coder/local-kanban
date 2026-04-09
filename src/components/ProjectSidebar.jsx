@@ -11,9 +11,16 @@ export function ProjectSidebar({
     <aside className={`sidebar ${collapsed ? "is-collapsed" : ""}`}>
       <div className="sidebar__header">
         <div className="sidebar__intro">
-          <p className="eyebrow">Workspace</p>
-          {collapsed ? <span className="sidebar__monogram">LK</span> : null}
-          <h1>{collapsed ? "Local" : "Local Kanban"}</h1>
+          {collapsed ? (
+            <span className="sidebar__monogram" aria-label="Local Kanban" title="Local Kanban">
+              LK
+            </span>
+          ) : (
+            <>
+              <p className="eyebrow">Workspace</p>
+              <h1>Local Kanban</h1>
+            </>
+          )}
           {!collapsed ? (
             <p className="muted">
               Tableros locales por proyecto, con historias y épicas leídas desde Markdown.

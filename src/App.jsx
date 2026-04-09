@@ -743,6 +743,7 @@ export default function App() {
               : (
                 <KanbanBoard
                   project={visibleProject}
+                  epicFilter={epicFilter}
                   onSelectStory={(story) => {
                     requestEditorTransition(() => {
                       setSelectedEpic(null);

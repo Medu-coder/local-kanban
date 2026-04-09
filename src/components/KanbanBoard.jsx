@@ -88,6 +88,7 @@ function buildEpicLanes(project) {
 
 export function KanbanBoard({
   project,
+  epicFilter,
   onSelectStory,
   onDropStory,
   draggedStory,
@@ -99,7 +100,13 @@ export function KanbanBoard({
   collapsedLanes,
   onToggleLane,
 }) {
-  const epicLanes = buildEpicLanes(project);
+  const epicLanes = buildEpicLanes(project).filter((lane) => {
+    if (epicFilter === "all") {
+      return true;
+    }
+
+    return lane.id === epicFilter;
+  });
 
   function handleBoardSurfaceClick(event) {
     if (event.target.closest("[data-sidepanel-action='true']")) {
@@ -112,10 +119,10 @@ export function KanbanBoard({
 
   return (
     <section className="board-surface" onClick={handleBoardSurfaceClick} data-testid="kanban-board">
-      <div className="board-status-row">
+      <div className="board-status-row" data-testid="board-status-row">
         {statuses.map((status) => (
           <header key={status.id} className="board-column board-column--header">
-            <div className="board-column__header">
+            <div className="board-column__header board-column__header--sticky">
               <div>
                 <p className="eyebrow">Stage</p>
                 <h2>{status.label}</h2>

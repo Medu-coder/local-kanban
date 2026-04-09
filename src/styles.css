@@ -16,6 +16,7 @@
   --accent: #ff9a5c;
   --accent-strong: #ffb884;
   --accent-soft: rgba(255, 154, 92, 0.14);
+  --accent-strong-soft: rgba(255, 184, 132, 0.88);
   --success: #7de3a1;
   --danger: #ff8d88;
   --warning: #ffd08e;
@@ -54,6 +55,7 @@
 html,
 body,
 #root {
+  height: 100%;
   min-height: 100%;
   margin: 0;
 }
@@ -64,17 +66,32 @@ html {
 
 body {
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow: hidden;
+  background: transparent;
+}
+
+#root {
+  position: relative;
+  isolation: isolate;
+}
+
+#root::before,
+#root::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#root::before {
+  z-index: -2;
   background:
     linear-gradient(120deg, rgba(255, 255, 255, 0.02), transparent 40%),
     var(--canvas-backdrop);
 }
 
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
+#root::after {
+  z-index: -1;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
@@ -130,21 +147,28 @@ pre {
 .app-shell {
   display: grid;
   grid-template-columns: var(--left-sidebar-width, 320px) minmax(0, 1fr);
+  height: 100vh;
   min-height: 100vh;
   position: relative;
+  overflow: hidden;
 }
 
 .left-sidebar-shell {
   position: relative;
+  height: 100vh;
   min-width: 0;
+  overflow: hidden;
 }
 
 .main-panel {
   position: relative;
   z-index: 1;
+  height: 100vh;
   padding: var(--space-7) var(--space-6) 56px;
   overflow-y: auto;
   overflow-x: hidden;
+  background: transparent;
+  overscroll-behavior: contain;
 }
 
 .workspace-canvas {
@@ -153,6 +177,8 @@ pre {
   width: min(100%, 1680px);
   margin: 0 auto;
   min-width: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar,
@@ -163,9 +189,11 @@ pre {
 }
 
 .sidebar {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--sidebar-backdrop);
+  overflow-y: auto;
 }
 
 .detail-panel,
@@ -277,18 +305,26 @@ pre {
   flex-direction: column;
   align-items: center;
   width: 100%;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .sidebar.is-collapsed .sidebar__intro {
+  width: auto;
   justify-items: center;
-  padding: var(--space-4) var(--space-3);
+  padding: 0;
+  min-height: auto;
+  align-content: start;
+  border: 0;
+  background: transparent;
   text-align: center;
 }
 
 .sidebar.is-collapsed .sidebar__intro .eyebrow {
   margin-bottom: 0;
   font-size: 0.62rem;
+  max-width: 100%;
+  letter-spacing: 0.1em;
+  overflow-wrap: anywhere;
 }
 
 .sidebar__section {
@@ -297,12 +333,20 @@ pre {
   margin-top: 18px;
 }
 
+.sidebar.is-collapsed .sidebar__section {
+  width: 100%;
+  margin-top: 0;
+  justify-items: center;
+}
+
 .sidebar.is-collapsed h1 {
   margin-bottom: 0;
   font-size: 0.88rem;
   line-height: 1.2;
-  letter-spacing: 0.08em;
+  max-width: 100%;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .view-switcher {
@@ -311,7 +355,17 @@ pre {
 }
 
 .view-switcher.is-collapsed {
+  width: auto;
   justify-items: center;
+}
+
+.view-switcher.is-collapsed .view-switcher__button {
+  width: 48px;
+  min-height: 48px;
+  height: 48px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 16px;
 }
 
 .view-switcher__button {
@@ -1175,6 +1229,14 @@ pre {
   gap: var(--space-4);
 }
 
+.board-status-row {
+  position: sticky;
+  top: 16px;
+  z-index: 4;
+  align-items: start;
+  padding-block: 2px;
+}
+
 .epic-lane-list {
   display: grid;
   gap: var(--space-5);
@@ -1280,6 +1342,10 @@ pre {
 
 .board-column--header {
   min-height: auto;
+  overflow: visible;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .board-column.is-drop-ready {
@@ -1287,19 +1353,19 @@ pre {
   box-shadow: 0 0 0 1px rgba(255, 154, 92, 0.16);
 }
 
-.board-status-row .board-column:nth-child(1) {
+.board-status-row .board-column:nth-child(1) .board-column__header--sticky {
   border-top-color: rgba(167, 177, 255, 0.4);
 }
 
-.board-status-row .board-column:nth-child(2) {
+.board-status-row .board-column:nth-child(2) .board-column__header--sticky {
   border-top-color: rgba(255, 154, 92, 0.42);
 }
 
-.board-status-row .board-column:nth-child(3) {
+.board-status-row .board-column:nth-child(3) .board-column__header--sticky {
   border-top-color: rgba(255, 208, 142, 0.42);
 }
 
-.board-status-row .board-column:nth-child(4) {
+.board-status-row .board-column:nth-child(4) .board-column__header--sticky {
   border-top-color: rgba(125, 227, 161, 0.42);
 }
 
@@ -1309,6 +1375,15 @@ pre {
   align-items: end;
   padding: 22px 20px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.board-column__header--sticky {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
+  border-top-width: 1px;
+  background: rgba(14, 17, 24, 0.92);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow-md);
 }
 
 .board-column__header h2 {
@@ -2159,6 +2234,11 @@ pre {
   .epic-status-grid,
   .story-card__footer {
     grid-template-columns: 1fr;
+  }
+
+  .board-status-row {
+    position: static;
+    padding-block: 0;
   }
 
   .topbar__stats-row {

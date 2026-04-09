@@ -95,6 +95,9 @@ test("filtra por épica y busca historias por texto", async ({ page }) => {
   await page.getByTestId("epic-filter").selectOption("EPI-002");
   await expect(page.getByTestId("story-card-STO-003")).toBeVisible();
   await expect(page.getByTestId("story-card-STO-001")).toHaveCount(0);
+  await expect(page.getByTestId("epic-lane-EPI-002")).toBeVisible();
+  await expect(page.getByTestId("epic-lane-EPI-001")).toHaveCount(0);
+  await expect(page.getByTestId("epic-lane-__no_epic__")).toHaveCount(0);
 
   await page.getByTestId("epic-filter").selectOption("all");
   await page.getByTestId("search-input").fill("Infraestructura base");
@@ -183,6 +186,31 @@ test("colapsa y expande una épica sin perder historias", async ({ page }) => {
   await expect(page.getByTestId("dropzone-EPI-001-backlog")).toHaveCount(0);
   await page.getByTestId("toggle-lane-EPI-001").click();
   await expect(page.getByTestId("dropzone-EPI-001-backlog")).toContainText("Preparar contrato agentico");
+});
+
+test("mantiene los stages flotando con el scroll interno del workspace", async ({ page }) => {
+  const mainPanel = page.locator(".main-panel");
+  const stageRow = page.getByTestId("board-status-row");
+
+  const before = await stageRow.boundingBox();
+  expect(before).not.toBeNull();
+
+  await mainPanel.evaluate((node) => {
+    node.scrollTop = 1400;
+  });
+
+  await expect.poll(async () => {
+    return mainPanel.evaluate((node) => node.scrollTop);
+  }).toBeGreaterThan(0);
+
+  await expect.poll(async () => {
+    return page.evaluate(() => window.scrollY);
+  }).toBe(0);
+
+  const after = await stageRow.boundingBox();
+  expect(after).not.toBeNull();
+  expect(Math.abs(after.y - 56)).toBeLessThan(4);
+  expect(Math.abs(after.y - before.y)).toBeGreaterThan(100);
 });
 
 test("cierra el editor de historia al pinchar fuera del sidebar", async ({ page }) => {
