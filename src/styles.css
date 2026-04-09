@@ -20,6 +20,10 @@
   --success: #7de3a1;
   --danger: #ff8d88;
   --warning: #ffd08e;
+  --stage-backlog: #a7b1ff;
+  --stage-developing: #ff9a5c;
+  --stage-testing: #ffd08e;
+  --stage-done: #7de3a1;
   --shadow-xl: 0 28px 90px rgba(0, 0, 0, 0.34);
   --shadow-lg: 0 18px 52px rgba(0, 0, 0, 0.24);
   --shadow-md: 0 12px 28px rgba(0, 0, 0, 0.18);
@@ -1122,32 +1126,32 @@ pre {
 }
 
 .graph-legend__item--epic {
-  border-color: rgba(255, 181, 92, 0.28);
-  color: #ffbe72;
+  border-color: color-mix(in srgb, var(--stage-testing) 38%, transparent);
+  color: var(--stage-testing);
 }
 
 .graph-legend__item--backlog {
-  color: #8fb4ff;
+  color: var(--stage-backlog);
 }
 
 .graph-legend__item--developing {
-  color: #ffcca6;
+  color: var(--stage-developing);
 }
 
 .graph-legend__item--testing {
-  color: #7ce7e1;
+  color: var(--stage-testing);
 }
 
 .graph-legend__item--done {
-  color: #b6efc9;
+  color: var(--stage-done);
 }
 
 .graph-legend__item--blocked {
-  color: #ffc2bc;
+  color: var(--stage-developing);
 }
 
 .graph-legend__item--related {
-  color: #e09bff;
+  color: var(--stage-backlog);
 }
 
 .graph-stage {
@@ -1210,20 +1214,20 @@ pre {
 }
 
 .graph-edge--epic {
-  stroke: rgba(255, 255, 255, 0.1);
-  stroke-width: 1.35;
+  stroke: color-mix(in srgb, var(--stage-testing) 88%, white 12%);
+  stroke-width: 1.5;
 }
 
 .graph-edge--blocked_by,
 .graph-edge--blocks {
-  stroke: rgba(255, 184, 132, 0.86);
+  stroke: color-mix(in srgb, var(--stage-developing) 92%, white 8%);
   stroke-width: 2.35;
 }
 
 .graph-edge--related_to {
-  stroke: rgba(224, 155, 255, 0.72);
-  stroke-width: 1.7;
-  stroke-dasharray: 8 8;
+  stroke: color-mix(in srgb, var(--stage-backlog) 90%, white 10%);
+  stroke-width: 2;
+  stroke-dasharray: 10 8;
 }
 
 .graph-node {
@@ -1254,23 +1258,23 @@ pre {
 }
 
 .graph-node--epic .graph-node__core {
-  fill: rgba(255, 181, 92, 0.28);
+  fill: color-mix(in srgb, var(--stage-testing) 28%, transparent);
 }
 
 .graph-node--backlog .graph-node__core {
-  fill: rgba(92, 146, 255, 0.3);
+  fill: color-mix(in srgb, var(--stage-backlog) 30%, transparent);
 }
 
 .graph-node--developing .graph-node__core {
-  fill: rgba(255, 154, 92, 0.28);
+  fill: color-mix(in srgb, var(--stage-developing) 28%, transparent);
 }
 
 .graph-node--testing .graph-node__core {
-  fill: rgba(82, 218, 210, 0.3);
+  fill: color-mix(in srgb, var(--stage-testing) 30%, transparent);
 }
 
 .graph-node--done .graph-node__core {
-  fill: rgba(125, 227, 161, 0.28);
+  fill: color-mix(in srgb, var(--stage-done) 28%, transparent);
 }
 
 .graph-node__percent,
@@ -1432,19 +1436,19 @@ pre {
 }
 
 .board-status-row .board-column:nth-child(1) .board-column__header--sticky {
-  border-top-color: rgba(167, 177, 255, 0.4);
+  border-top-color: color-mix(in srgb, var(--stage-backlog) 40%, transparent);
 }
 
 .board-status-row .board-column:nth-child(2) .board-column__header--sticky {
-  border-top-color: rgba(255, 154, 92, 0.42);
+  border-top-color: color-mix(in srgb, var(--stage-developing) 42%, transparent);
 }
 
 .board-status-row .board-column:nth-child(3) .board-column__header--sticky {
-  border-top-color: rgba(255, 208, 142, 0.42);
+  border-top-color: color-mix(in srgb, var(--stage-testing) 42%, transparent);
 }
 
 .board-status-row .board-column:nth-child(4) .board-column__header--sticky {
-  border-top-color: rgba(125, 227, 161, 0.42);
+  border-top-color: color-mix(in srgb, var(--stage-done) 42%, transparent);
 }
 
 .board-column__header {
