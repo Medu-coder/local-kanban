@@ -83,6 +83,78 @@ Clasificacion normativa:
 - `agent-policy only`: el backend no lo impone, pero todos los agentes deben obedecerlo
 - `informational only`: no debe alterar decisiones de ejecucion por si solo
 
+## Modelo multiagéntico
+
+`Local Kanban` esta disenado para coordinar multiples agentes especialistas trabajando en paralelo sobre el mismo proyecto. Hay dos roles diferenciados: el **orquestador** y el **especialista**.
+
+### Roles
+
+**Orquestador**
+
+El agente orquestador es el punto de entrada. Sus responsabilidades son:
+
+1. Conocer `KANBAN_ROOT` y el repositorio del proyecto.
+2. Registrar el proyecto en el Kanban si aun no esta registrado.
+3. Leer el documento de especificaciones del proyecto o el repositorio para entender el trabajo a realizar.
+4. Crear las epicas (agrupadores tematicos del trabajo).
+5. Crear las historias, asignando a cada una el `agent_owner` que corresponde al especialista con las capacidades para ejecutarla. Usar siempre `execution_mode: agent`.
+6. Determinar que agentes especialistas hay que invocar leyendo las historias pendientes.
+7. Invocar un agente especialista por cada `agent_owner` distinto con historias ejecutables.
+
+El orquestador no ejecuta el trabajo de las historias; su trabajo termina cuando los especialistas estan en marcha.
+
+**Especialista**
+
+El agente especialista recibe su identidad y el contexto del proyecto. Sus responsabilidades son:
+
+1. Filtrar las historias del proyecto que le corresponden: `execution_mode: agent`, `agent_owner == su identidad`, `status != done`.
+2. Ejecutar cada historia respetando bloqueos y readiness.
+3. Actualizar el frontmatter a medida que avanza (estado, subtareas, criterios, `agent_status_note`, `last_agent_update`).
+
+El especialista no crea historias ni registra proyectos; opera exclusivamente sobre las historias que le han sido asignadas.
+
+### Como el orquestador determina que agentes invocar
+
+Despues de crear las historias, el orquestador debe leer el proyecto (via API o directamente los `.md`) y extraer los valores unicos de `agent_owner` que cumplan todas estas condiciones:
+
+- `execution_mode` es `agent` o `hybrid`
+- `status` es distinto de `done`
+- `agent_owner` no es `null`
+
+Cada valor unico resultante requiere una instancia de agente especialista. Si dos historias tienen el mismo `agent_owner`, las gestiona el mismo agente; no se invocan dos instancias del mismo especialista.
+
+```
+agent_owner unico A → invocar especialista A
+agent_owner unico B → invocar especialista B
+agent_owner unico C → invocar especialista C
+```
+
+Los especialistas A, B y C pueden ejecutarse en paralelo si no tienen dependencias entre sus historias.
+
+### Contexto minimo que debe recibir un especialista
+
+El orquestador debe pasar al especialista al menos:
+
+- `KANBAN_ROOT`: ruta absoluta al directorio de Local Kanban
+- ID del proyecto tal como esta en `config/projects.json`
+- Su identidad como `agent_owner` (para filtrar sus historias)
+
+Opcionalmente: ruta absoluta al repositorio del proyecto si el especialista necesita leer o modificar codigo.
+
+### Tipos de agente especialista
+
+Los tipos de especialista son libres; cada proyecto los define segun sus necesidades. El orquestador es quien decide que tipo de especialista corresponde a cada historia en funcion del trabajo que describe. Ejemplos no normativos: `frontend-agent`, `backend-agent`, `qa-agent`, `devops-agent`, `data-agent`.
+
+No existe un catalogo global de tipos. El unico contrato es que el valor de `agent_owner` en la historia debe coincidir exactamente con la identidad que el especialista usa para filtrar sus historias.
+
+### Best practice: crear historias desde un documento de especificaciones
+
+El orquestador deberia leer un documento de especificaciones del proyecto antes de crear epicas e historias (ej. `docs/specs.md`, `README.md`, un PRD o cualquier documento de producto disponible en el repositorio). Esto garantiza que el desglose refleja requisitos reales y que el `agent_owner` de cada historia refleja al especialista con las capacidades correctas.
+
+Si no existe un documento de specs, el orquestador puede derivar el plan leyendo el codigo y la estructura del repositorio.
+
+Este es un best practice, no un requisito. Las historias pueden crearse por cualquier via valida.
+
 ## Bootstrap: registrar y conectar un proyecto nuevo
 
 Este es el flujo completo para que un agente en cualquier repositorio empiece a operar con `Local Kanban`.
@@ -578,18 +650,33 @@ description: Resumen corto
 labels: []
 ```
 
-## Flujo operativo recomendado
+## Flujo operativo del orquestador
 
-1. Confirmar `KANBAN_ROOT` en el contexto de la tarea. Si no esta, pedirlo.
-2. Leer el `.md` de la historia.
-3. Si `blocked_by` referencia historias inexistentes, tratarlo como bloqueo real.
-4. Si `execution_mode` es `human`, no ejecutar trabajo principal.
-5. Si `execution_mode` es `agent` o `hybrid` y falta `agent_owner`, no ejecutar trabajo principal.
-6. Si se toma posesion de una historia, reflejarlo en `agent_owner`.
-7. Si se avanza trabajo real, actualizar `last_agent_update` con timestamp ISO y resumir el punto actual en `agent_status_note`.
-8. Si se completan subtareas o criterios manuales, persistirlos en el frontmatter antes de terminar.
-9. Para cambios de estado, usar la API si el servidor esta en marcha (aplica validaciones automaticas). Para edicion de campos, escribir el `.md` directamente.
-10. Usar la UI solo como verificacion visual final, nunca como base para decidir que escribir.
+1. Confirmar `KANBAN_ROOT`. Si no esta en el contexto, pedirlo.
+2. Registrar el proyecto en `KANBAN_ROOT/config/projects.json` si no existe (ver Bootstrap).
+3. Leer el documento de especificaciones del proyecto o el repositorio para entender el trabajo.
+4. Crear las epicas necesarias via API o archivo.
+5. Crear las historias: una por unidad de trabajo atomica. Para cada historia:
+   - Asignar `agent_owner` al especialista con las capacidades adecuadas para ese trabajo.
+   - Usar siempre `execution_mode: agent` (o `hybrid` si hay intervencion humana prevista).
+   - Declarar `blocked_by` cuando haya dependencias entre historias.
+   - Incluir `context_files` si hay archivos clave que el especialista debe revisar primero.
+6. Una vez creadas todas las historias, leer el proyecto y extraer los `agent_owner` unicos con historias ejecutables (ver seccion "Modelo multiagéntico").
+7. Invocar un agente especialista por cada `agent_owner` unico, pasandole `KANBAN_ROOT`, el ID del proyecto y su identidad como `agent_owner`.
+
+## Flujo operativo del especialista
+
+1. Confirmar `KANBAN_ROOT`, ID del proyecto y propia identidad como `agent_owner`.
+2. Leer las historias del proyecto que le corresponden: `execution_mode: agent` o `hybrid`, `agent_owner == propia identidad`, `status != done`.
+3. Para cada historia, en orden de prioridad y dependencias:
+   a. Comprobar bloqueos: si `blocked_by` tiene historias no completadas, no ejecutar.
+   b. Comprobar `ready_criteria`: si no estan completos, no mover a `developing`.
+   c. Tomar posesion reflejandolo en `agent_owner` si no esta asignada.
+   d. Ejecutar el trabajo.
+   e. Actualizar `last_agent_update` con timestamp ISO y `agent_status_note` con el estado actual.
+   f. Completar subtareas y criterios manuales a medida que se verifican.
+   g. Avanzar el estado via API si el servidor esta en marcha.
+4. Usar la UI solo como verificacion visual final, nunca como base para decidir que escribir.
 
 ## Como preparar un proyecto nuevo para Local Kanban
 
