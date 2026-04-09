@@ -37,6 +37,7 @@ function statusTone(status) {
 
 export function StoryGraphView({
   project,
+  density = "compact",
   onSelectStory,
   onSelectEpic,
   onBackgroundClick,
@@ -80,11 +81,12 @@ export function StoryGraphView({
   const graph = useMemo(
     () =>
       buildStoryGraph(project, {
+        density,
         showRelated,
         width: size.width,
         height: size.height,
       }),
-    [project, showRelated, size.height, size.width]
+    [density, project, showRelated, size.height, size.width]
   );
 
   const adjacency = useMemo(() => {
@@ -106,8 +108,8 @@ export function StoryGraphView({
     () =>
       `${showRelated}:${size.width}x${size.height}:${graph.nodes.map((node) => node.id).join("|")}:${graph.edges
         .map((edge) => edge.id)
-        .join("|")}`,
-    [graph.edges, graph.nodes, showRelated, size.height, size.width]
+        .join("|")}:${density}`,
+    [density, graph.edges, graph.nodes, showRelated, size.height, size.width]
   );
 
   const visibleGraph = useMemo(() => {
@@ -175,7 +177,13 @@ export function StoryGraphView({
   }
 
   function buildFitTransform(nodes) {
-    return buildFocusTransform(nodes, { maxScale: 0.68, paddingRatioX: 0.16, paddingRatioY: 0.18 });
+    const fitOptionsByDensity = {
+      comfortable: { maxScale: 0.72, paddingRatioX: 0.18, paddingRatioY: 0.2 },
+      compact: { maxScale: 0.62, paddingRatioX: 0.13, paddingRatioY: 0.15 },
+      dense: { maxScale: 0.56, paddingRatioX: 0.1, paddingRatioY: 0.12 },
+    };
+
+    return buildFocusTransform(nodes, fitOptionsByDensity[density] ?? fitOptionsByDensity.compact);
   }
 
   function buildFocusTransform(

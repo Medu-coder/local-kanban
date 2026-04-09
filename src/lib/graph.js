@@ -45,6 +45,18 @@ function createEpicPosition(index, total, width, height) {
   };
 }
 
+function densityLayoutFactor(density = "compact") {
+  switch (density) {
+    case "comfortable":
+      return 1;
+    case "dense":
+      return 0.84;
+    case "compact":
+    default:
+      return 0.92;
+  }
+}
+
 function compareStoriesForLayout(a, b) {
   const statusDelta = (storyStatusOrder[a.status] ?? 99) - (storyStatusOrder[b.status] ?? 99);
   if (statusDelta !== 0) {
@@ -60,20 +72,20 @@ function compareStoriesForLayout(a, b) {
   return (a.title ?? a.id).localeCompare(b.title ?? b.id, "es", { sensitivity: "base" });
 }
 
-function createStoryPosition(story, storyIndex, laneIndex, laneCount, anchor) {
-  const laneGapX = 124;
-  const rowGapY = 108;
+function createStoryPosition(story, storyIndex, laneIndex, laneCount, anchor, densityFactor) {
+  const laneGapX = 124 * densityFactor;
+  const rowGapY = 108 * densityFactor;
   const row = Math.floor(storyIndex / 2);
   const columnInRow = storyIndex % 2;
   const laneOffset = laneIndex - (laneCount - 1) / 2;
   const rowOffset = row - 0.35;
-  const sideOffset = columnInRow === 0 ? -28 : 28;
-  const statusDriftX = laneIndex === 0 ? -20 : laneIndex === laneCount - 1 ? 20 : 0;
-  const statusDriftY = (storyStatusOrder[story.status] ?? 0) * 6;
+  const sideOffset = (columnInRow === 0 ? -28 : 28) * densityFactor;
+  const statusDriftX = (laneIndex === 0 ? -20 : laneIndex === laneCount - 1 ? 20 : 0) * densityFactor;
+  const statusDriftY = (storyStatusOrder[story.status] ?? 0) * 6 * densityFactor;
 
   return {
     x: anchor.x + laneOffset * laneGapX + sideOffset + statusDriftX,
-    y: anchor.y + 118 + rowOffset * rowGapY + columnInRow * 12 + statusDriftY,
+    y: anchor.y + 118 * densityFactor + rowOffset * rowGapY + columnInRow * (12 * densityFactor) + statusDriftY,
   };
 }
 
@@ -89,7 +101,7 @@ function deriveStoryProgress(story) {
   return clamp(base * 0.55 + subtasksDone * 0.2 + readyRatio * 0.1 + doneRatio * 0.15);
 }
 
-function buildEpicNode(epic, stories, position) {
+function buildEpicNode(epic, stories, position, densityFactor) {
   const aggregate = stories.reduce((acc, story) => acc + deriveStoryProgress(story), 0);
   const progress = stories.length ? aggregate / stories.length : 0;
 
@@ -101,13 +113,13 @@ function buildEpicNode(epic, stories, position) {
     description: epic.description,
     progress,
     storyCount: stories.length,
-    radius: 42 + Math.round(progress * 22),
+    radius: Math.round((42 + progress * 22) * densityFactor),
     x: position.x,
     y: position.y,
   };
 }
 
-function buildStoryNode(story, position) {
+function buildStoryNode(story, position, densityFactor) {
   const progress = deriveStoryProgress(story);
 
   return {
@@ -118,7 +130,7 @@ function buildStoryNode(story, position) {
     status: story.status,
     progress,
     epicId: story.epicId ?? "__no_epic__",
-    radius: 18 + Math.round(progress * 14),
+    radius: Math.round((18 + progress * 14) * densityFactor),
     x: position.x,
     y: position.y,
   };
@@ -129,7 +141,8 @@ function createEdgeId(kind, source, target) {
 }
 
 export function buildStoryGraph(project, options = {}) {
-  const { showRelated = true, width = 1280, height = 760 } = options;
+  const { density = "compact", showRelated = true, width = 1280, height = 760 } = options;
+  const densityFactor = densityLayoutFactor(density);
   const visibleStories = project?.stories ?? [];
   const storyMap = new Map(visibleStories.map((story) => [story.id, story]));
   const storiesByEpic = visibleStories.reduce((acc, story) => {
@@ -172,7 +185,7 @@ export function buildStoryGraph(project, options = {}) {
   const storyPositions = new Map();
   for (const [index, entry] of epicEntries.entries()) {
     const position = createEpicPosition(index, epicEntries.length, width, height);
-    const node = buildEpicNode(entry.epic, entry.stories, position);
+    const node = buildEpicNode(entry.epic, entry.stories, position, densityFactor);
     epicNodes.push(node);
     epicAnchors.set(entry.epic.id, position);
     nodes.push(node);
@@ -197,7 +210,7 @@ export function buildStoryGraph(project, options = {}) {
       laneStories.forEach((story, storyIndex) => {
         storyPositions.set(
           story.id,
-          createStoryPosition(story, storyIndex, laneIndex, laneKeys.length, position)
+          createStoryPosition(story, storyIndex, laneIndex, laneKeys.length, position, densityFactor)
         );
       });
     });
@@ -208,7 +221,7 @@ export function buildStoryGraph(project, options = {}) {
       x: width / 2,
       y: height / 2,
     };
-    const node = buildStoryNode(story, storyPositions.get(story.id) ?? epicAnchor);
+    const node = buildStoryNode(story, storyPositions.get(story.id) ?? epicAnchor, densityFactor);
     nodes.push(node);
 
     const epicNodeId = `epic:${story.epicId ?? "__no_epic__"}`;

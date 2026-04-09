@@ -34,6 +34,29 @@
   --space-5: 24px;
   --space-6: 32px;
   --space-7: 40px;
+  --sidebar-base-width: 284px;
+  --workspace-max-width: 1540px;
+  --main-panel-inline-padding: 28px;
+  --main-panel-top-padding: 34px;
+  --main-panel-bottom-padding: 44px;
+  --surface-padding-lg: 24px;
+  --surface-padding-md: 18px;
+  --surface-padding-sm: 14px;
+  --topbar-title-size: clamp(1.72rem, 2vw, 2.5rem);
+  --sidebar-title-size: clamp(1.88rem, 1.8vw, 2.4rem);
+  --stage-title-size: 1.52rem;
+  --epic-title-size: 1.34rem;
+  --story-title-size: 1rem;
+  --metric-value-size: 1.16rem;
+  --meta-label-size: 0.66rem;
+  --control-height: 48px;
+  --toolbar-button-padding-inline: 18px;
+  --story-card-footer-min-height: 62px;
+  --story-card-stat-size: 1.04rem;
+  --graph-stage-height: 700px;
+  --graph-node-label-size: 0.84rem;
+  --graph-node-meta-size: 0.68rem;
+  --graph-node-percent-size: 0.7rem;
   --sidebar-backdrop:
     linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
     rgba(15, 18, 25, 0.9);
@@ -44,6 +67,58 @@
   font-family: "Avenir Next", "Segoe UI Variable", "Segoe UI", sans-serif;
   background: var(--canvas-backdrop);
   color: var(--text);
+}
+
+.app-shell.density-comfortable {
+  --sidebar-base-width: 320px;
+  --workspace-max-width: 1680px;
+  --main-panel-inline-padding: 32px;
+  --main-panel-top-padding: 40px;
+  --main-panel-bottom-padding: 56px;
+  --surface-padding-lg: 30px;
+  --surface-padding-md: 22px;
+  --surface-padding-sm: 16px;
+  --topbar-title-size: clamp(2rem, 2.4vw, 3rem);
+  --sidebar-title-size: clamp(2.1rem, 2vw, 2.8rem);
+  --stage-title-size: 1.8rem;
+  --epic-title-size: 1.6rem;
+  --story-title-size: 1.08rem;
+  --metric-value-size: 1.28rem;
+  --meta-label-size: 0.68rem;
+  --control-height: 54px;
+  --toolbar-button-padding-inline: 20px;
+  --story-card-footer-min-height: 74px;
+  --story-card-stat-size: 1.18rem;
+  --graph-stage-height: 760px;
+  --graph-node-label-size: 0.9rem;
+  --graph-node-meta-size: 0.72rem;
+  --graph-node-percent-size: 0.74rem;
+}
+
+.app-shell.density-dense {
+  --sidebar-base-width: 258px;
+  --workspace-max-width: 1480px;
+  --main-panel-inline-padding: 22px;
+  --main-panel-top-padding: 26px;
+  --main-panel-bottom-padding: 36px;
+  --surface-padding-lg: 20px;
+  --surface-padding-md: 16px;
+  --surface-padding-sm: 12px;
+  --topbar-title-size: clamp(1.54rem, 1.8vw, 2.2rem);
+  --sidebar-title-size: clamp(1.68rem, 1.7vw, 2.2rem);
+  --stage-title-size: 1.34rem;
+  --epic-title-size: 1.18rem;
+  --story-title-size: 0.94rem;
+  --metric-value-size: 1.02rem;
+  --meta-label-size: 0.62rem;
+  --control-height: 44px;
+  --toolbar-button-padding-inline: 16px;
+  --story-card-footer-min-height: 56px;
+  --story-card-stat-size: 0.98rem;
+  --graph-stage-height: 660px;
+  --graph-node-label-size: 0.78rem;
+  --graph-node-meta-size: 0.64rem;
+  --graph-node-percent-size: 0.66rem;
 }
 
 *,
@@ -146,7 +221,7 @@ pre {
 
 .app-shell {
   display: grid;
-  grid-template-columns: var(--left-sidebar-width, 320px) minmax(0, 1fr);
+  grid-template-columns: var(--left-sidebar-width, var(--sidebar-base-width)) minmax(0, 1fr);
   height: 100vh;
   min-height: 100vh;
   position: relative;
@@ -164,7 +239,10 @@ pre {
   position: relative;
   z-index: 1;
   height: 100vh;
-  padding: var(--space-7) var(--space-6) 56px;
+  padding:
+    var(--main-panel-top-padding)
+    var(--main-panel-inline-padding)
+    var(--main-panel-bottom-padding);
   overflow-y: auto;
   overflow-x: hidden;
   background: transparent;
@@ -174,7 +252,7 @@ pre {
 .workspace-canvas {
   display: grid;
   gap: var(--space-5);
-  width: min(100%, 1680px);
+  width: min(100%, var(--workspace-max-width));
   margin: 0 auto;
   min-width: 0;
   position: relative;
@@ -184,7 +262,7 @@ pre {
 .sidebar,
 .detail-panel,
 .editor-panel {
-  padding: var(--space-6);
+  padding: var(--surface-padding-lg);
   backdrop-filter: blur(18px);
 }
 
@@ -248,7 +326,7 @@ pre {
 }
 
 .sidebar h1 {
-  font-size: clamp(2.1rem, 2vw, 2.8rem);
+  font-size: var(--sidebar-title-size);
   margin-bottom: var(--space-2);
 }
 
@@ -489,7 +567,7 @@ pre {
   display: grid;
   gap: var(--space-5);
   align-items: start;
-  padding: 28px 30px;
+  padding: var(--surface-padding-lg);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background:
@@ -506,7 +584,7 @@ pre {
 }
 
 .topbar__headline h2 {
-  font-size: clamp(2rem, 2.4vw, 3rem);
+  font-size: var(--topbar-title-size);
 }
 
 .topbar__path {
@@ -527,7 +605,7 @@ pre {
 
 .topbar__path code {
   max-width: 100%;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -547,8 +625,8 @@ pre {
   justify-items: center;
   gap: 4px;
   min-width: 0;
-  min-height: 98px;
-  padding: 12px 18px;
+  min-height: calc(var(--control-height) * 1.7);
+  padding: 10px 14px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -556,7 +634,7 @@ pre {
 }
 
 .topbar__metric strong {
-  font-size: 1.28rem;
+  font-size: var(--metric-value-size);
   color: var(--text-strong);
   font-variant-numeric: tabular-nums;
 }
@@ -594,7 +672,7 @@ pre {
 }
 
 .toolbar {
-  padding: 24px 26px;
+  padding: var(--surface-padding-lg);
   border: 1px solid var(--border);
   border-radius: 28px;
   background:
@@ -631,7 +709,7 @@ pre {
 
 .toolbar__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr) minmax(150px, 0.55fr) auto auto;
   gap: var(--space-3);
   align-items: end;
 }
@@ -642,8 +720,8 @@ pre {
 
 .toolbar__row .field input,
 .toolbar__row .field select {
-  height: 54px;
-  min-height: 54px;
+  height: var(--control-height);
+  min-height: var(--control-height);
 }
 
 .toolbar__row .field select {
@@ -668,7 +746,7 @@ pre {
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--space-3);
   align-items: center;
-  padding: 16px 18px;
+  padding: var(--surface-padding-sm) var(--surface-padding-md);
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.03);
@@ -695,8 +773,8 @@ pre {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  min-height: 68px;
-  padding: 14px 18px;
+  min-height: calc(var(--control-height) * 1.25);
+  padding: var(--surface-padding-sm) var(--surface-padding-md);
   border-radius: 20px;
   border: 1px solid rgba(125, 227, 161, 0.14);
   background:
@@ -718,8 +796,8 @@ pre {
 }
 
 .toolbar__button {
-  min-height: 52px;
-  padding-inline: 20px;
+  min-height: var(--control-height);
+  padding-inline: var(--toolbar-button-padding-inline);
 }
 
 .field {
@@ -744,7 +822,7 @@ pre {
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   background: rgba(255, 255, 255, 0.05);
   color: var(--text);
 }
@@ -770,7 +848,7 @@ pre {
 
 .primary-button {
   border: 0;
-  padding: 13px 20px;
+  padding: 12px var(--toolbar-button-padding-inline);
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   color: #20130b;
   font-weight: 800;
@@ -789,7 +867,7 @@ pre {
 
 .ghost-button {
   border: 1px solid rgba(255, 255, 255, 0.09);
-  padding: 11px 15px;
+  padding: 10px 14px;
   background: rgba(255, 255, 255, 0.02);
   color: var(--text);
 }
@@ -838,7 +916,7 @@ pre {
   top: 0;
   right: 0;
   bottom: 0;
-  width: var(--right-sidebar-width, 460px);
+  width: var(--right-sidebar-width, 420px);
   z-index: 120;
   pointer-events: none;
 }
@@ -879,7 +957,7 @@ pre {
   align-items: center;
   gap: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 11px 15px;
+  padding: 10px 14px;
   background: rgba(12, 15, 21, 0.92);
   color: var(--text);
   box-shadow: var(--shadow-lg);
@@ -941,7 +1019,7 @@ pre {
   gap: 10px;
   width: fit-content;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 11px 15px;
+  padding: 10px 14px;
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
 }
@@ -980,7 +1058,7 @@ pre {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-3);
-  padding: 20px 22px;
+  padding: var(--surface-padding-md);
   background:
     linear-gradient(135deg, rgba(255, 154, 92, 0.08), transparent 34%),
     rgba(16, 20, 28, 0.88);
@@ -1015,7 +1093,7 @@ pre {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 14px 18px;
+  padding: var(--surface-padding-sm) var(--surface-padding-md);
   background: rgba(11, 13, 18, 0.76);
 }
 
@@ -1074,7 +1152,7 @@ pre {
 
 .graph-stage {
   position: relative;
-  min-height: 760px;
+  min-height: var(--graph-stage-height);
   overflow: hidden;
   overscroll-behavior: contain;
   background:
@@ -1103,7 +1181,7 @@ pre {
   z-index: 1;
   display: block;
   width: 100%;
-  height: 760px;
+  height: var(--graph-stage-height);
   cursor: grab;
   touch-action: none;
   overscroll-behavior: none;
@@ -1204,20 +1282,20 @@ pre {
 
 .graph-node__percent {
   fill: var(--text-strong);
-  font-size: 0.74rem;
+  font-size: var(--graph-node-percent-size);
   font-weight: 800;
   letter-spacing: 0.04em;
 }
 
 .graph-node__label {
   fill: var(--text-strong);
-  font-size: 0.9rem;
+  font-size: var(--graph-node-label-size);
   font-weight: 700;
 }
 
 .graph-node__meta {
   fill: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--graph-node-meta-size);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -1231,7 +1309,7 @@ pre {
 
 .board-status-row {
   position: sticky;
-  top: 16px;
+  top: 10px;
   z-index: 4;
   align-items: start;
   padding-block: 2px;
@@ -1239,7 +1317,7 @@ pre {
 
 .epic-lane-list {
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
 
 .epic-lane {
@@ -1250,7 +1328,7 @@ pre {
 .epic-lane__summary {
   display: grid;
   gap: var(--space-3);
-  padding: 22px 24px;
+  padding: var(--surface-padding-md);
   border: 1px solid var(--border);
   border-radius: 26px;
   background:
@@ -1277,7 +1355,7 @@ pre {
 .epic-lane__title {
   display: block;
   margin-bottom: 6px;
-  font-size: 1.6rem;
+  font-size: var(--epic-title-size);
   font-weight: 800;
   line-height: 1.12;
   color: var(--text-strong);
@@ -1301,7 +1379,7 @@ pre {
 
 .epic-lane__progress strong {
   color: var(--text-strong);
-  font-size: 1.2rem;
+  font-size: var(--metric-value-size);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1315,7 +1393,7 @@ pre {
 
 .progress-track {
   width: 100%;
-  height: 12px;
+  height: 10px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
@@ -1373,7 +1451,7 @@ pre {
   display: flex;
   justify-content: space-between;
   align-items: end;
-  padding: 22px 20px 18px;
+  padding: var(--surface-padding-md) var(--surface-padding-md) var(--surface-padding-sm);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -1387,7 +1465,7 @@ pre {
 }
 
 .board-column__header h2 {
-  font-size: 1.8rem;
+  font-size: var(--stage-title-size);
 }
 
 .board-column__body {
@@ -1397,14 +1475,14 @@ pre {
 }
 
 .epic-lane__column {
-  min-height: 300px;
+  min-height: 260px;
 }
 
 .epic-lane__column-inner {
   display: grid;
   align-content: start;
   gap: var(--space-3);
-  padding: 16px;
+  padding: var(--surface-padding-sm);
   min-height: 100%;
 }
 
@@ -1422,10 +1500,10 @@ pre {
   width: 100%;
   border: 1px dashed rgba(255, 255, 255, 0.08);
   border-radius: 18px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   background: rgba(255, 255, 255, 0.03);
   color: var(--muted-strong);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 700;
   text-align: left;
 }
@@ -1479,14 +1557,14 @@ pre {
 
 .story-stack {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .story-card {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
-  padding: 18px;
+  padding: var(--surface-padding-md);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 22px;
   background:
@@ -1522,7 +1600,7 @@ pre {
 
 .story-card h3 {
   margin: 0;
-  font-size: 1.08rem;
+  font-size: var(--story-title-size);
   line-height: 1.42;
   color: var(--text-strong);
   overflow-wrap: anywhere;
@@ -1547,10 +1625,10 @@ pre {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
-  min-height: 74px;
-  padding: 12px 14px;
+  min-height: var(--story-card-footer-min-height);
+  padding: 10px 12px;
   border-radius: 16px;
   background: rgba(11, 13, 18, 0.26);
   border: 1px solid rgba(255, 255, 255, 0.04);
@@ -1572,7 +1650,7 @@ pre {
 
 .story-card__meta-label {
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: var(--meta-label-size);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1580,7 +1658,7 @@ pre {
 
 .story-card__meta-group strong {
   color: var(--text-strong);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -1596,7 +1674,7 @@ pre {
 }
 
 .story-card__meta-value--numeric {
-  font-size: 1.18rem;
+  font-size: var(--story-card-stat-size);
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -1670,7 +1748,7 @@ pre {
   z-index: 3;
   align-items: flex-start;
   margin: 0 0 var(--space-5);
-  padding: 20px;
+  padding: var(--surface-padding-md);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 22px;
   background: rgba(14, 17, 24, 0.92);
@@ -1700,7 +1778,7 @@ pre {
 
 .detail-grid div {
   width: calc(50% - 6px);
-  padding: 16px;
+  padding: var(--surface-padding-sm);
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.03);
@@ -1724,7 +1802,7 @@ pre {
   display: grid;
   gap: 14px;
   margin-bottom: var(--space-5);
-  padding: 20px;
+  padding: var(--surface-padding-md);
   border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.025);
@@ -1765,7 +1843,7 @@ pre {
 .editor-section {
   display: grid;
   gap: 12px;
-  padding: 18px;
+  padding: var(--surface-padding-md);
   border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.025);
@@ -1792,7 +1870,7 @@ pre {
 .relation-grid > div {
   display: grid;
   gap: 12px;
-  padding: 14px;
+  padding: var(--surface-padding-sm);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.03);
@@ -1836,7 +1914,7 @@ pre {
 
 .subtask-editor__main input {
   display: block;
-  min-height: 56px;
+  min-height: calc(var(--control-height) + 2px);
   padding-inline: 18px;
 }
 
@@ -1901,7 +1979,7 @@ pre {
   display: grid;
   gap: 18px;
   min-width: 0;
-  padding: 22px;
+  padding: var(--surface-padding-md);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 24px;
   background:
@@ -1942,7 +2020,7 @@ pre {
 .epic-manager__actions .primary-button,
 .epic-manager__actions .ghost-button,
 .epic-manager-card__edit {
-  min-height: 54px;
+  min-height: var(--control-height);
   padding-inline: 24px;
 }
 
@@ -2028,7 +2106,7 @@ pre {
 .epic-progress-card {
   display: grid;
   gap: 14px;
-  padding: 18px;
+  padding: var(--surface-padding-md);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.03);
@@ -2041,7 +2119,7 @@ pre {
 }
 
 .epic-status-card {
-  padding: 16px;
+  padding: var(--surface-padding-sm);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.03);
@@ -2068,7 +2146,7 @@ pre {
 }
 
 .epic-story-item {
-  padding: 14px;
+  padding: var(--surface-padding-sm);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.03);
@@ -2131,7 +2209,7 @@ pre {
 
 .setup-panel {
   margin-top: 4px;
-  padding: 28px;
+  padding: var(--surface-padding-lg);
   background: rgba(16, 20, 27, 0.88);
 }
 
@@ -2160,7 +2238,7 @@ pre {
 
 @media (max-width: 1440px) {
   .app-shell {
-    grid-template-columns: var(--left-sidebar-width, 280px) minmax(0, 1fr);
+    grid-template-columns: var(--left-sidebar-width, var(--sidebar-base-width)) minmax(0, 1fr);
   }
 
   .right-sidebar-shell {
@@ -2170,7 +2248,7 @@ pre {
 
 @media (max-width: 1180px) {
   .toolbar__row {
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 1fr) minmax(160px, 1fr);
   }
 
   .toolbar__footer,

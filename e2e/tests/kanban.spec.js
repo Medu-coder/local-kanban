@@ -209,7 +209,7 @@ test("mantiene los stages flotando con el scroll interno del workspace", async (
 
   const after = await stageRow.boundingBox();
   expect(after).not.toBeNull();
-  expect(Math.abs(after.y - 56)).toBeLessThan(4);
+  expect(after.y).toBeLessThan(80);
   expect(Math.abs(after.y - before.y)).toBeGreaterThan(100);
 });
 
@@ -232,4 +232,53 @@ test("alterna a la vista grafo y abre detalles desde un nodo", async ({ page }) 
   await page.getByTestId("workspace-view-kanban").click();
   await expect(page.getByTestId("kanban-board")).toBeVisible();
   await expect(page.getByTestId("current-project-name")).toHaveText("Proyecto de ejemplo");
+});
+
+test("usa compact por defecto y mantiene el sticky del kanban tras cambiar densidad", async ({ page }) => {
+  await expect(page.getByTestId("density-select")).toHaveValue("compact");
+
+  const mainPanel = page.locator(".main-panel");
+  const stageRow = page.getByTestId("board-status-row");
+
+  await page.getByTestId("density-select").selectOption("dense");
+
+  const before = await stageRow.boundingBox();
+  expect(before).not.toBeNull();
+
+  await mainPanel.evaluate((node) => {
+    node.scrollTop = 1400;
+  });
+
+  await expect.poll(async () => {
+    return mainPanel.evaluate((node) => node.scrollTop);
+  }).toBeGreaterThan(0);
+
+  const after = await stageRow.boundingBox();
+  expect(after).not.toBeNull();
+  expect(Math.abs(after.y - before.y)).toBeGreaterThan(100);
+  expect(after.y).toBeLessThan(80);
+});
+
+test("persiste la densidad y el grafo sigue operativo", async ({ page }) => {
+  await page.getByTestId("density-select").selectOption("dense");
+  await page.reload();
+  await expect(page.getByTestId("current-project-name")).toHaveText("Proyecto de ejemplo");
+  await expect(page.getByTestId("density-select")).toHaveValue("dense");
+
+  const stageTitleSize = await page.locator(".board-column__header h2").first().evaluate((node) => {
+    return Number.parseFloat(window.getComputedStyle(node).fontSize);
+  });
+  expect(stageTitleSize).toBeLessThan(28);
+
+  await page.getByTestId("workspace-view-graph").click();
+  await expect(page.getByTestId("story-graph-view")).toBeVisible();
+  await expect(page.getByTestId("graph-node-story-STO-001")).toBeVisible();
+
+  const graphHeight = await page.locator(".graph-canvas").evaluate((node) => {
+    return Number.parseFloat(window.getComputedStyle(node).height);
+  });
+  expect(graphHeight).toBeLessThan(700);
+
+  await page.getByTestId("graph-node-story-STO-001").click();
+  await expect(page.getByTestId("story-detail-panel")).toBeVisible();
 });

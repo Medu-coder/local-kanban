@@ -25,6 +25,21 @@ const setupSteps = [
   "En cada proyecto crea docs/kanban/epics y docs/kanban/stories.",
   "Usa la plantilla de docs/PROJECT_KANBAN_SETUP.md para que otro agente deje el repo preparado.",
 ];
+const DENSITY_STORAGE_KEY = "local-kanban.ui-density";
+const DEFAULT_DENSITY = "compact";
+
+function loadInitialDensity() {
+  if (typeof window === "undefined") {
+    return DEFAULT_DENSITY;
+  }
+
+  const savedDensity = window.localStorage.getItem(DENSITY_STORAGE_KEY);
+  if (savedDensity === "comfortable" || savedDensity === "compact" || savedDensity === "dense") {
+    return savedDensity;
+  }
+
+  return DEFAULT_DENSITY;
+}
 
 export default function App() {
   const MIN_LEFT_WIDTH = 220;
@@ -57,9 +72,14 @@ export default function App() {
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(420);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
+  const [density, setDensity] = useState(loadInitialDensity);
   const storyEditorSubmitRef = useRef(null);
   const epicEditorSubmitRef = useRef(null);
   const pendingEditorActionRef = useRef(null);
+
+  useEffect(() => {
+    window.localStorage.setItem(DENSITY_STORAGE_KEY, density);
+  }, [density]);
 
   useEffect(() => {
     let cancelled = false;
@@ -557,7 +577,7 @@ export default function App() {
 
   return (
     <div
-      className="app-shell"
+      className={`app-shell density-${density}`}
       style={{
         "--left-sidebar-width": `${leftSidebarCollapsed ? 88 : leftSidebarWidth}px`,
       }}
@@ -645,6 +665,8 @@ export default function App() {
           {selectedProject ? (
             <Toolbar
               project={selectedProject}
+              density={density}
+              onDensityChange={setDensity}
               searchQuery={searchQuery}
               onSearchQueryChange={setSearchQuery}
               epicFilter={epicFilter}
@@ -710,6 +732,7 @@ export default function App() {
               ? (
                 <StoryGraphView
                   project={visibleProject}
+                  density={density}
                   onSelectStory={(story) => {
                     requestEditorTransition(() => {
                       setSelectedEpic(null);

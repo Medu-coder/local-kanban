@@ -1,5 +1,7 @@
 export function Toolbar({
   project,
+  density,
+  onDensityChange,
   searchQuery,
   onSearchQueryChange,
   epicFilter,
@@ -37,6 +39,19 @@ export function Toolbar({
                   {epic.title}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label className="field field--density">
+            <span>Densidad</span>
+            <select
+              data-testid="density-select"
+              value={density}
+              onChange={(event) => onDensityChange(event.target.value)}
+            >
+              <option value="comfortable">Cómoda</option>
+              <option value="compact">Compacta</option>
+              <option value="dense">Densa</option>
             </select>
           </label>
 
