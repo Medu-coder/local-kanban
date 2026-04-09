@@ -22,6 +22,7 @@ Kanban local multiproyecto inspirado en Jira para gestionar épicas e historias 
 
 ```bash
 npm install
+npm run setup
 npm run dev
 ```
 
@@ -38,9 +39,19 @@ Resumen rápido:
 git clone <repo-url> local-kanban
 cd local-kanban
 npm install
-cp config/projects.example.json config/projects.json
-# editar config/projects.json con rutas absolutas reales
+npm run setup
+# editar config/projects.json con rutas absolutas reales si aún no lo has hecho
 npm run dev
+```
+
+No hace falta construir un ejecutable nativo. El flujo recomendado es `clone -> npm install -> npm run setup`.
+
+`npm run setup` abre un asistente guiado cuando detecta una terminal interactiva. Para agentes o automatizaciones, usa `npm run setup -- --no-interactive`.
+
+Si un agente ya te ha preguntado qué proyectos quieres conectar, puede dejarlo configurado directamente con:
+
+```bash
+npm run setup -- --projects-json '[{"name":"Mi proyecto","rootPath":"/ruta/absoluta/al/proyecto"}]'
 ```
 
 ## Tests E2E
@@ -91,6 +102,10 @@ Para distribución, usa [config/projects.example.json](config/projects.example.j
 La skill distribuible para que cualquier agente entienda cómo operar con este Kanban está en:
 
 [skills/local-kanban-agent/SKILL.md](skills/local-kanban-agent/SKILL.md)
+
+La skill específica para instalar el repositorio desde Git y dejarlo listo está en:
+
+[skills/local-kanban-installer/SKILL.md](skills/local-kanban-installer/SKILL.md)
 
 Uso previsto:
 - el agente trabaja sobre los `.md` como fuente de verdad

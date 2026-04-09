@@ -21,14 +21,29 @@ npm --version
 git clone <repo-url> local-kanban
 cd local-kanban
 npm install
+npm run setup
 ```
 
 ## Configuración de proyectos
 
-1. Copia `config/projects.example.json` sobre `config/projects.json`.
+1. Ejecuta `npm run setup`.
 2. Edita `config/projects.json`.
 3. Sustituye `rootPath` por la ruta absoluta real de cada proyecto en esa máquina.
 4. Mantén `docsPath` como `docs/kanban`, salvo que quieras usar otra carpeta por proyecto.
+
+`npm run setup` crea `config/projects.json` desde la plantilla si todavía no existe. Si ya existe, no lo sobrescribe. Si quieres regenerarlo desde cero, usa `npm run setup:reset`.
+
+Cuando se ejecuta en una terminal normal, `npm run setup` abre un asistente guiado para dejar configurados uno o varios proyectos en esa misma pasada. Si prefieres un flujo sin preguntas:
+
+```bash
+npm run setup -- --no-interactive
+```
+
+Si un agente ya ha recogido las rutas y nombres que quieres usar, también puede dejarlo resuelto directamente:
+
+```bash
+npm run setup -- --projects-json '[{"name":"Billing API","rootPath":"/Users/alguien/Code/billing-api"},{"name":"Frontend App","rootPath":"/Users/alguien/Code/frontend-app"}]'
+```
 
 Ejemplo:
 
@@ -111,3 +126,4 @@ Si vas a compartir el proyecto por GitHub o como plantilla:
 - publica `config/projects.example.json`
 - documenta siempre que cada usuario debe crear su propio `config/projects.json`
 - distribuye también la skill de agentes incluida en [skills/local-kanban-agent/SKILL.md](../skills/local-kanban-agent/SKILL.md)
+- si quieres una instalación guiada por agente, usa también [skills/local-kanban-installer/SKILL.md](../skills/local-kanban-installer/SKILL.md)
