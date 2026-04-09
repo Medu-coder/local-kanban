@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const emptySubtask = { title: "", done: false };
 const defaultDerivedRule = "dependencies_done";
@@ -189,8 +189,18 @@ function normalizeFormState(project, story, draft) {
   };
 }
 
-export function StoryEditor({ project, story, draft, onClose, onSubmit, isSaving, onDirtyChange }) {
+export function StoryEditor({
+  project,
+  story,
+  draft,
+  onClose,
+  onSubmit,
+  isSaving,
+  onDirtyChange,
+  onRegisterSubmit,
+}) {
   const [form, setForm] = useState(() => makeInitialState(project, story, draft));
+  const formRef = useRef(null);
 
   useEffect(() => {
     setForm(makeInitialState(project, story, draft));
@@ -229,6 +239,13 @@ export function StoryEditor({ project, story, draft, onClose, onSubmit, isSaving
 
     onDirtyChange?.(JSON.stringify(currentState) !== JSON.stringify(initialState));
   }, [draft, form, onDirtyChange, project, story]);
+
+  useEffect(() => {
+    onRegisterSubmit?.(() => formRef.current?.requestSubmit());
+    return () => {
+      onRegisterSubmit?.(null);
+    };
+  }, [onRegisterSubmit]);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -342,7 +359,7 @@ export function StoryEditor({ project, story, draft, onClose, onSubmit, isSaving
         </button>
       </div>
 
-      <form className="editor-form" onSubmit={handleSubmit}>
+      <form ref={formRef} className="editor-form" onSubmit={handleSubmit}>
         <label className="field">
           <span>ID</span>
           <input

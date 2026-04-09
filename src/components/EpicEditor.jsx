@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function makeInitialState(project, epic) {
   if (epic) {
@@ -35,8 +35,17 @@ function normalizeState(project, epic, form) {
   };
 }
 
-export function EpicEditor({ project, epic, onClose, onSubmit, isSaving, onDirtyChange }) {
+export function EpicEditor({
+  project,
+  epic,
+  onClose,
+  onSubmit,
+  isSaving,
+  onDirtyChange,
+  onRegisterSubmit,
+}) {
   const [form, setForm] = useState(() => makeInitialState(project, epic));
+  const formRef = useRef(null);
 
   useEffect(() => {
     setForm(makeInitialState(project, epic));
@@ -47,6 +56,13 @@ export function EpicEditor({ project, epic, onClose, onSubmit, isSaving, onDirty
     const currentState = normalizeState(project, epic, form);
     onDirtyChange?.(JSON.stringify(initialState) !== JSON.stringify(currentState));
   }, [epic, form, onDirtyChange, project]);
+
+  useEffect(() => {
+    onRegisterSubmit?.(() => formRef.current?.requestSubmit());
+    return () => {
+      onRegisterSubmit?.(null);
+    };
+  }, [onRegisterSubmit]);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -67,9 +83,13 @@ export function EpicEditor({ project, epic, onClose, onSubmit, isSaving, onDirty
   }
 
   return (
-    <aside className="editor-panel" onClick={(event) => event.stopPropagation()} data-testid="epic-editor-panel">
+    <aside
+      className="editor-panel epic-editor-panel"
+      onClick={(event) => event.stopPropagation()}
+      data-testid="epic-editor-panel"
+    >
       <div className="detail-panel__header">
-        <div>
+        <div className="detail-panel__title-block epic-editor-panel__hero">
           <p className="eyebrow">{epic ? "Editar" : "Nueva"}</p>
           <h2>{epic ? epic.title : "Épica"}</h2>
         </div>
@@ -78,7 +98,7 @@ export function EpicEditor({ project, epic, onClose, onSubmit, isSaving, onDirty
         </button>
       </div>
 
-      <form className="editor-form" onSubmit={handleSubmit}>
+      <form ref={formRef} className="editor-form" onSubmit={handleSubmit}>
         <label className="field">
           <span>ID</span>
           <input

@@ -106,6 +106,7 @@ export function KanbanBoard({
       return;
     }
 
+    event.stopPropagation();
     onBackgroundClick();
   }
 
@@ -142,11 +143,12 @@ export function KanbanBoard({
                       }
                     }}
                   >
-                    <h3>{lane.title}</h3>
+                    <span className="epic-lane__title">{lane.title}</span>
                   </button>
                   <p className="muted">{lane.description || "Sin descripción breve."}</p>
                 </div>
                 <div className="epic-lane__progress">
+                  <small>{lane.storyCount} historias</small>
                   <strong>
                     {lane.progressScore}/{lane.progressMax}
                   </strong>
@@ -160,7 +162,7 @@ export function KanbanBoard({
                     data-testid={`quick-create-epic-${lane.id}`}
                     onClick={() => onQuickCreateStory(lane.id, "backlog")}
                   >
-                    + Historia
+                    Nueva historia
                   </button>
                   <button
                     className="ghost-button"
@@ -200,7 +202,7 @@ export function KanbanBoard({
                       data-testid={`quick-create-${lane.id}-${status.id}`}
                       onClick={() => onQuickCreateStory(lane.id, status.id)}
                     >
-                      + Crear
+                      + Crear historia
                     </button>
 
                     {lane.storiesByStatus[status.id].length ? (

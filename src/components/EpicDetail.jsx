@@ -73,7 +73,7 @@ export function EpicDetail({ epic, stories, onClose, onEdit, onCreateStory }) {
       </section>
 
       <section className="detail-section">
-        <div className="detail-panel__header detail-panel__header--compact">
+        <div className="detail-section__header">
           <h3>Historias de la épica</h3>
           <button className="primary-button" type="button" onClick={() => onCreateStory(epic.id, "backlog")}>
             Nueva historia

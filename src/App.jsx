@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   createEpic,
   createStory,
@@ -55,6 +55,9 @@ export default function App() {
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(420);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
+  const storyEditorSubmitRef = useRef(null);
+  const epicEditorSubmitRef = useRef(null);
+  const pendingEditorActionRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,13 +219,11 @@ export default function App() {
           setEpicFilter(createdEpicId ?? "__no_epic__");
         }
       }
-      setIsEditorOpen(false);
-      setEditorStory(null);
-      setStoryDraft(null);
-      setIsEditorDirty(false);
-      setSidePanelMode("detail");
+      resetEditorState();
+      runPendingEditorAction();
     } catch (saveError) {
       setError(saveError.message);
+      pendingEditorActionRef.current = null;
     } finally {
       setIsSavingStory(false);
     }
@@ -251,23 +252,70 @@ export default function App() {
       }
 
       await refreshProjects();
-      setIsEditorOpen(false);
-      setEditorEpic(null);
-      setIsEditorDirty(false);
-      setSidePanelMode("epic-manager");
+      resetEditorState();
+      runPendingEditorAction();
     } catch (saveError) {
       setError(saveError.message);
+      pendingEditorActionRef.current = null;
     } finally {
       setIsSavingEpic(false);
     }
   }
 
-  function confirmDiscardChanges() {
+  function registerStoryEditorSubmit(submitHandler) {
+    storyEditorSubmitRef.current = submitHandler;
+  }
+
+  function registerEpicEditorSubmit(submitHandler) {
+    epicEditorSubmitRef.current = submitHandler;
+  }
+
+  function resetEditorState() {
+    setSelectedStory(null);
+    setSelectedEpic(null);
+    setEditorStory(null);
+    setEditorEpic(null);
+    setStoryDraft(null);
+    setIsEditorOpen(false);
+    setIsEditorDirty(false);
+    setSidePanelMode("detail");
+  }
+
+  function runPendingEditorAction() {
+    const action = pendingEditorActionRef.current;
+    pendingEditorActionRef.current = null;
+    action?.();
+  }
+
+  function requestEditorTransition(nextAction) {
     if (!isEditorOpen || !isEditorDirty) {
-      return true;
+      nextAction();
+      return;
     }
 
-    return window.confirm("Hay cambios sin guardar en el panel actual. ¿Quieres descartarlos?");
+    const shouldSave = window.confirm(
+      "Hay cambios sin guardar. ¿Quieres guardarlos antes de continuar?"
+    );
+
+    if (shouldSave) {
+      pendingEditorActionRef.current = nextAction;
+      const submitHandler =
+        sidePanelMode === "story-editor"
+          ? storyEditorSubmitRef.current
+          : sidePanelMode === "epic-editor"
+            ? epicEditorSubmitRef.current
+            : null;
+
+      submitHandler?.();
+      return;
+    }
+
+    if (!window.confirm("Si sales ahora perderás los cambios. ¿Quieres descartarlos?")) {
+      return;
+    }
+
+    pendingEditorActionRef.current = null;
+    nextAction();
   }
 
   useEffect(() => {
@@ -443,18 +491,9 @@ export default function App() {
   }
 
   function closeSidePanel() {
-    if (!confirmDiscardChanges()) {
-      return;
-    }
-
-    setSelectedStory(null);
-    setSelectedEpic(null);
-    setEditorStory(null);
-    setEditorEpic(null);
-    setStoryDraft(null);
-    setIsEditorOpen(false);
-    setIsEditorDirty(false);
-    setSidePanelMode("detail");
+    requestEditorTransition(() => {
+      resetEditorState();
+    });
   }
 
   function handleMainAreaClick(event) {
@@ -520,19 +559,10 @@ export default function App() {
           collapsed={leftSidebarCollapsed}
           onToggleCollapse={() => setLeftSidebarCollapsed((current) => !current)}
           onSelectProject={(projectId) => {
-            if (!confirmDiscardChanges()) {
-              return;
-            }
-
-            setSelectedProjectId(projectId);
-            setSelectedStory(null);
-            setSelectedEpic(null);
-            setEditorStory(null);
-            setEditorEpic(null);
-            setStoryDraft(null);
-            setIsEditorOpen(false);
-            setIsEditorDirty(false);
-            setSidePanelMode("detail");
+            requestEditorTransition(() => {
+              setSelectedProjectId(projectId);
+              resetEditorState();
+            });
           }}
         />
         {!leftSidebarCollapsed ? (
@@ -543,19 +573,58 @@ export default function App() {
       <main className="main-panel" onClick={handleMainAreaClick}>
         <div className="workspace-canvas">
           <section className="topbar">
-            <div>
+            <div className="topbar__headline">
               <p className="eyebrow">Proyecto activo</p>
               <h2 data-testid="current-project-name">{selectedProject?.name ?? "Sin proyectos configurados"}</h2>
-              <p className="muted">
-                {selectedProject
-                  ? `${selectedProject.rootPath}/${selectedProject.docsPath}`
-                  : "Configura tus rutas locales para empezar."}
+              <p className="topbar__path muted">
+                <span>Origen</span>
+                <code translate="no">
+                  {selectedProject
+                    ? `${selectedProject.rootPath}/${selectedProject.docsPath}`
+                    : "Configura tus rutas locales para empezar."}
+                </code>
               </p>
             </div>
 
-            <div className="topbar__status">
-              <span className={`sync-indicator ${isPending ? "is-busy" : ""}`} />
-              <span>{isLoading ? "Cargando" : isPending ? "Sincronizando" : "Sincronizado"}</span>
+            <div className="topbar__stats-row" aria-label="Resumen del proyecto activo">
+              {selectedProject ? (
+                <>
+                  <div className="topbar__metric">
+                    <strong>{selectedProject.stories.length}</strong>
+                    <span>Historias</span>
+                  </div>
+                  <div className="topbar__metric">
+                    <strong>{selectedProject.epics.length}</strong>
+                    <span>Épicas</span>
+                  </div>
+                  <div className="topbar__metric">
+                    <strong>{visibleProject?.stories.length ?? 0}</strong>
+                    <span>Visibles</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="topbar__metric">
+                    <strong>0</strong>
+                    <span>Historias</span>
+                  </div>
+                  <div className="topbar__metric">
+                    <strong>0</strong>
+                    <span>Épicas</span>
+                  </div>
+                  <div className="topbar__metric">
+                    <strong>0</strong>
+                    <span>Visibles</span>
+                  </div>
+                </>
+              )}
+              <div className="topbar__metric topbar__metric--status">
+                <span className={`sync-indicator ${isPending ? "is-busy" : ""}`} />
+                <div>
+                  <strong>{isLoading ? "Cargando…" : isPending ? "Sincronizando…" : "Sincronizado"}</strong>
+                  <span>Estado local</span>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -569,34 +638,30 @@ export default function App() {
               epicFilter={epicFilter}
               onEpicFilterChange={setEpicFilter}
               onCreateStory={() => {
-                if (!confirmDiscardChanges()) {
-                  return;
-                }
-
-                setEditorStory(null);
-                setEditorEpic(null);
-                setStoryDraft(null);
-                setSelectedStory(null);
-                setSelectedEpic(null);
-                setIsEditorOpen(true);
-                setIsEditorDirty(false);
-                setSidePanelMode("story-editor");
-                setRightSidebarCollapsed(false);
+                requestEditorTransition(() => {
+                  setEditorStory(null);
+                  setEditorEpic(null);
+                  setStoryDraft(null);
+                  setSelectedStory(null);
+                  setSelectedEpic(null);
+                  setIsEditorOpen(true);
+                  setIsEditorDirty(false);
+                  setSidePanelMode("story-editor");
+                  setRightSidebarCollapsed(false);
+                });
               }}
               onManageEpics={() => {
-                if (!confirmDiscardChanges()) {
-                  return;
-                }
-
-                setSelectedStory(null);
-                setSelectedEpic(null);
-                setEditorStory(null);
-                setEditorEpic(null);
-                setStoryDraft(null);
-                setIsEditorOpen(false);
-                setIsEditorDirty(false);
-                setSidePanelMode("epic-manager");
-                setRightSidebarCollapsed(false);
+                requestEditorTransition(() => {
+                  setSelectedStory(null);
+                  setSelectedEpic(null);
+                  setEditorStory(null);
+                  setEditorEpic(null);
+                  setStoryDraft(null);
+                  setIsEditorOpen(false);
+                  setIsEditorDirty(false);
+                  setSidePanelMode("epic-manager");
+                  setRightSidebarCollapsed(false);
+                });
               }}
               visibleCount={visibleProject?.stories.length ?? 0}
             />
@@ -621,9 +686,11 @@ export default function App() {
             <KanbanBoard
               project={visibleProject}
               onSelectStory={(story) => {
-                setSelectedEpic(null);
-                setSelectedStory(story);
-                setRightSidebarCollapsed(false);
+                requestEditorTransition(() => {
+                  setSelectedEpic(null);
+                  setSelectedStory(story);
+                  setRightSidebarCollapsed(false);
+                });
               }}
               onDropStory={handleDropStory}
               draggedStory={draggedStory}
@@ -631,34 +698,34 @@ export default function App() {
               onDragEnd={() => setDraggedStory(null)}
               onBackgroundClick={closeSidePanel}
               onSelectEpic={(epicId) => {
-                const epic = selectedProject?.epics.find((item) => item.id === epicId) ?? null;
-                setSelectedStory(null);
-                setSelectedEpic(epic);
-                setEditorStory(null);
-                setEditorEpic(null);
-                setStoryDraft(null);
-                setIsEditorOpen(false);
-                setIsEditorDirty(false);
-                setSidePanelMode("epic-detail");
-                setRightSidebarCollapsed(false);
+                requestEditorTransition(() => {
+                  const epic = selectedProject?.epics.find((item) => item.id === epicId) ?? null;
+                  setSelectedStory(null);
+                  setSelectedEpic(epic);
+                  setEditorStory(null);
+                  setEditorEpic(null);
+                  setStoryDraft(null);
+                  setIsEditorOpen(false);
+                  setIsEditorDirty(false);
+                  setSidePanelMode("epic-detail");
+                  setRightSidebarCollapsed(false);
+                });
               }}
               onQuickCreateStory={(epicId, status) => {
-                if (!confirmDiscardChanges()) {
-                  return;
-                }
-
-                setSelectedStory(null);
-                setSelectedEpic(null);
-                setEditorStory(null);
-                setEditorEpic(null);
-                setStoryDraft({
-                  epicId: epicId === "__no_epic__" ? "" : epicId,
-                  status,
+                requestEditorTransition(() => {
+                  setSelectedStory(null);
+                  setSelectedEpic(null);
+                  setEditorStory(null);
+                  setEditorEpic(null);
+                  setStoryDraft({
+                    epicId: epicId === "__no_epic__" ? "" : epicId,
+                    status,
+                  });
+                  setIsEditorOpen(true);
+                  setIsEditorDirty(false);
+                  setSidePanelMode("story-editor");
+                  setRightSidebarCollapsed(false);
                 });
-                setIsEditorOpen(true);
-                setIsEditorDirty(false);
-                setSidePanelMode("story-editor");
-                setRightSidebarCollapsed(false);
               }}
               collapsedLanes={collapsedLanes}
               onToggleLane={(laneId) => {
@@ -684,6 +751,7 @@ export default function App() {
                 className="sidebar-toggle sidebar-toggle--right"
                 type="button"
                 onClick={() => setRightSidebarCollapsed(true)}
+                aria-label="Contraer panel lateral"
                 title="Contraer panel lateral"
               >
                 <span className="sidebar-toggle__icon">→</span>
@@ -700,24 +768,24 @@ export default function App() {
                   onSubmit={handleSaveStory}
                   isSaving={isSavingStory}
                   onDirtyChange={setIsEditorDirty}
+                  onRegisterSubmit={registerStoryEditorSubmit}
                 />
               ) : isEditorOpen && sidePanelMode === "epic-editor" && selectedProject ? (
                 <EpicEditor
                   project={selectedProject}
                   epic={editorEpic}
                   onClose={() => {
-                    if (!confirmDiscardChanges()) {
-                      return;
-                    }
-
-                    setIsEditorOpen(false);
-                    setEditorEpic(null);
-                    setIsEditorDirty(false);
-                    setSidePanelMode("epic-manager");
+                    requestEditorTransition(() => {
+                      setIsEditorOpen(false);
+                      setEditorEpic(null);
+                      setIsEditorDirty(false);
+                      setSidePanelMode("epic-manager");
+                    });
                   }}
                   onSubmit={handleSaveEpic}
                   isSaving={isSavingEpic}
                   onDirtyChange={setIsEditorDirty}
+                  onRegisterSubmit={registerEpicEditorSubmit}
                 />
               ) : sidePanelMode === "epic-manager" && selectedProject ? (
                 <EpicManager
@@ -786,12 +854,13 @@ export default function App() {
               )}
             </>
           ) : (
-            <button
-              className="sidebar-toggle sidebar-toggle--collapsed"
-              type="button"
-              onClick={() => setRightSidebarCollapsed(false)}
-              title="Expandir panel lateral"
-            >
+              <button
+                className="sidebar-toggle sidebar-toggle--collapsed"
+                type="button"
+                onClick={() => setRightSidebarCollapsed(false)}
+                aria-label="Expandir panel lateral"
+                title="Expandir panel lateral"
+              >
               <span className="sidebar-toggle__icon">←</span>
               <span className="sidebar-toggle__body">
                 <strong>Panel</strong>

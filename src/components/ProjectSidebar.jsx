@@ -23,6 +23,7 @@ export function ProjectSidebar({
           className={`sidebar-collapse-button ${collapsed ? "is-collapsed" : ""}`}
           type="button"
           onClick={onToggleCollapse}
+          aria-label={collapsed ? "Expandir navegación" : "Contraer navegación"}
           title={collapsed ? "Expandir navegación" : "Contraer navegación"}
         >
           <span className="sidebar-collapse-button__icon">{collapsed ? "→" : "←"}</span>
@@ -44,8 +45,16 @@ export function ProjectSidebar({
                 type="button"
               >
                 <span className="project-list__name">{project.name}</span>
-                <span className="project-list__meta">
-                  {totalStories} historias · {project.epics.length} épicas
+                <span className="project-list__meta">Tablero local conectado a Markdown</span>
+                <span className="project-list__stats" aria-hidden="true">
+                  <span className="project-list__stat">
+                    <strong>{totalStories}</strong>
+                    <small>Historias</small>
+                  </span>
+                  <span className="project-list__stat">
+                    <strong>{project.epics.length}</strong>
+                    <small>Épicas</small>
+                  </span>
                 </span>
               </button>
             );

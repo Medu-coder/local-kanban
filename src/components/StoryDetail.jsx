@@ -39,7 +39,7 @@ function renderStoryReference(story) {
 function ChecklistSection({ title, criteria, progress, onToggleCriterion, isUpdatingCriterion }) {
   return (
     <section className="detail-section">
-      <div className="detail-panel__header detail-panel__header--compact">
+      <div className="detail-section__header detail-section__header--sticky">
         <h3>{title}</h3>
         <span className="count-pill">
           {progress.completed}/{progress.total}
