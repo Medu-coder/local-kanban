@@ -11,6 +11,7 @@ import {
 } from "./lib/api";
 import { ProjectSidebar } from "./components/ProjectSidebar";
 import { KanbanBoard } from "./components/KanbanBoard";
+import { StoryGraphView } from "./components/StoryGraphView";
 import { StoryDetail } from "./components/StoryDetail";
 import { StoryEditor } from "./components/StoryEditor";
 import { Toolbar } from "./components/Toolbar";
@@ -31,6 +32,7 @@ export default function App() {
   const MIN_RIGHT_WIDTH = 320;
   const MAX_RIGHT_WIDTH = 720;
   const [data, setData] = useState({ projects: [], statuses: [] });
+  const [workspaceView, setWorkspaceView] = useState("kanban");
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [selectedStory, setSelectedStory] = useState(null);
   const [selectedEpic, setSelectedEpic] = useState(null);
@@ -564,8 +566,10 @@ export default function App() {
         <ProjectSidebar
           projects={data.projects}
           selectedProjectId={selectedProjectId}
+          workspaceView={workspaceView}
           collapsed={leftSidebarCollapsed}
           onToggleCollapse={() => setLeftSidebarCollapsed((current) => !current)}
+          onWorkspaceViewChange={setWorkspaceView}
           onSelectProject={(projectId) => {
             requestEditorTransition(() => {
               setSelectedProjectId(projectId);
@@ -672,6 +676,17 @@ export default function App() {
                 });
               }}
               visibleCount={visibleProject?.stories.length ?? 0}
+              supplementalControls={
+                workspaceView === "graph" ? (
+                  <div className="toolbar__mode-pill" data-testid="toolbar-graph-mode">
+                    <span className="toolbar__mode-dot" />
+                    <div>
+                      <strong>Vista grafo</strong>
+                      <p className="muted">Explora dependencias, avance y densidad de trabajo.</p>
+                    </div>
+                  </div>
+                ) : null
+              }
             />
           ) : null}
 
@@ -690,60 +705,96 @@ export default function App() {
             </section>
           ) : null}
 
-          {visibleProject ? (
-            <KanbanBoard
-              project={visibleProject}
-              onSelectStory={(story) => {
-                requestEditorTransition(() => {
-                  setSelectedEpic(null);
-                  setSelectedStory(story);
-                  setRightSidebarCollapsed(false);
-                });
-              }}
-              onDropStory={handleDropStory}
-              draggedStory={draggedStory}
-              onDragStart={setDraggedStory}
-              onDragEnd={() => setDraggedStory(null)}
-              onBackgroundClick={closeSidePanel}
-              onSelectEpic={(epicId) => {
-                requestEditorTransition(() => {
-                  const epic = selectedProject?.epics.find((item) => item.id === epicId) ?? null;
-                  setSelectedStory(null);
-                  setSelectedEpic(epic);
-                  setEditorStory(null);
-                  setEditorEpic(null);
-                  setStoryDraft(null);
-                  setIsEditorOpen(false);
-                  setIsEditorDirty(false);
-                  setSidePanelMode("epic-detail");
-                  setRightSidebarCollapsed(false);
-                });
-              }}
-              onQuickCreateStory={(epicId, status) => {
-                requestEditorTransition(() => {
-                  setSelectedStory(null);
-                  setSelectedEpic(null);
-                  setEditorStory(null);
-                  setEditorEpic(null);
-                  setStoryDraft({
-                    epicId: epicId === "__no_epic__" ? "" : epicId,
-                    status,
-                  });
-                  setIsEditorOpen(true);
-                  setIsEditorDirty(false);
-                  setSidePanelMode("story-editor");
-                  setRightSidebarCollapsed(false);
-                });
-              }}
-              collapsedLanes={collapsedLanes}
-              onToggleLane={(laneId) => {
-                setCollapsedLanes((current) => ({
-                  ...current,
-                  [laneId]: !current[laneId],
-                }));
-              }}
-            />
-          ) : null}
+          {visibleProject
+            ? workspaceView === "graph"
+              ? (
+                <StoryGraphView
+                  project={visibleProject}
+                  onSelectStory={(story) => {
+                    requestEditorTransition(() => {
+                      setSelectedEpic(null);
+                      setSelectedStory(story);
+                      setEditorStory(null);
+                      setEditorEpic(null);
+                      setStoryDraft(null);
+                      setIsEditorOpen(false);
+                      setIsEditorDirty(false);
+                      setSidePanelMode("detail");
+                      setRightSidebarCollapsed(false);
+                    });
+                  }}
+                  onSelectEpic={(epicId) => {
+                    requestEditorTransition(() => {
+                      const epic = selectedProject?.epics.find((item) => item.id === epicId) ?? null;
+                      setSelectedStory(null);
+                      setSelectedEpic(epic);
+                      setEditorStory(null);
+                      setEditorEpic(null);
+                      setStoryDraft(null);
+                      setIsEditorOpen(false);
+                      setIsEditorDirty(false);
+                      setSidePanelMode("epic-detail");
+                      setRightSidebarCollapsed(false);
+                    });
+                  }}
+                  onBackgroundClick={closeSidePanel}
+                />
+              )
+              : (
+                <KanbanBoard
+                  project={visibleProject}
+                  onSelectStory={(story) => {
+                    requestEditorTransition(() => {
+                      setSelectedEpic(null);
+                      setSelectedStory(story);
+                      setRightSidebarCollapsed(false);
+                    });
+                  }}
+                  onDropStory={handleDropStory}
+                  draggedStory={draggedStory}
+                  onDragStart={setDraggedStory}
+                  onDragEnd={() => setDraggedStory(null)}
+                  onBackgroundClick={closeSidePanel}
+                  onSelectEpic={(epicId) => {
+                    requestEditorTransition(() => {
+                      const epic = selectedProject?.epics.find((item) => item.id === epicId) ?? null;
+                      setSelectedStory(null);
+                      setSelectedEpic(epic);
+                      setEditorStory(null);
+                      setEditorEpic(null);
+                      setStoryDraft(null);
+                      setIsEditorOpen(false);
+                      setIsEditorDirty(false);
+                      setSidePanelMode("epic-detail");
+                      setRightSidebarCollapsed(false);
+                    });
+                  }}
+                  onQuickCreateStory={(epicId, status) => {
+                    requestEditorTransition(() => {
+                      setSelectedStory(null);
+                      setSelectedEpic(null);
+                      setEditorStory(null);
+                      setEditorEpic(null);
+                      setStoryDraft({
+                        epicId: epicId === "__no_epic__" ? "" : epicId,
+                        status,
+                      });
+                      setIsEditorOpen(true);
+                      setIsEditorDirty(false);
+                      setSidePanelMode("story-editor");
+                      setRightSidebarCollapsed(false);
+                    });
+                  }}
+                  collapsedLanes={collapsedLanes}
+                  onToggleLane={(laneId) => {
+                    setCollapsedLanes((current) => ({
+                      ...current,
+                      [laneId]: !current[laneId],
+                    }));
+                  }}
+                />
+              )
+            : null}
         </div>
       </main>
 

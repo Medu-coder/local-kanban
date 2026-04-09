@@ -7,6 +7,7 @@ export function Toolbar({
   onCreateStory,
   onManageEpics,
   visibleCount,
+  supplementalControls,
 }) {
   return (
     <section className="toolbar" data-testid="toolbar">
@@ -60,12 +61,16 @@ export function Toolbar({
           </button>
         </div>
 
-        <div className="toolbar__summary">
-          <span className="count-pill">{visibleCount}</span>
-          <div>
-            <strong>Historias visibles</strong>
-            <p className="muted">Filtra por búsqueda y por épica activa.</p>
+        <div className="toolbar__footer">
+          <div className="toolbar__summary">
+            <span className="count-pill">{visibleCount}</span>
+            <div>
+              <strong>Historias visibles</strong>
+              <p className="muted">Filtra por búsqueda y por épica activa.</p>
+            </div>
           </div>
+
+          {supplementalControls ? <div className="toolbar__supplemental">{supplementalControls}</div> : null}
         </div>
       </div>
     </section>

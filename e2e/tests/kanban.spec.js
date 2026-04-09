@@ -191,3 +191,17 @@ test("cierra el editor de historia al pinchar fuera del sidebar", async ({ page 
   await page.getByTestId("kanban-board").click({ position: { x: 10, y: 10 } });
   await expect(page.getByTestId("story-editor-panel")).toHaveCount(0);
 });
+
+test("alterna a la vista grafo y abre detalles desde un nodo", async ({ page }) => {
+  await page.getByTestId("workspace-view-graph").click();
+  await expect(page.getByTestId("story-graph-view")).toBeVisible();
+  await expect(page.getByTestId("graph-node-story-STO-001")).toBeVisible();
+
+  await page.getByTestId("graph-node-story-STO-001").click();
+  await expect(page.getByTestId("story-detail-panel")).toBeVisible();
+  await expect(page.getByTestId("story-detail-panel").getByText("Preparar contrato agentico")).toBeVisible();
+
+  await page.getByTestId("workspace-view-kanban").click();
+  await expect(page.getByTestId("kanban-board")).toBeVisible();
+  await expect(page.getByTestId("current-project-name")).toHaveText("Proyecto de ejemplo");
+});

@@ -2,6 +2,8 @@ export function ProjectSidebar({
   projects,
   selectedProjectId,
   onSelectProject,
+  workspaceView,
+  onWorkspaceViewChange,
   collapsed,
   onToggleCollapse,
 }) {
@@ -29,6 +31,34 @@ export function ProjectSidebar({
           <span className="sidebar-collapse-button__icon">{collapsed ? "→" : "←"}</span>
           {!collapsed ? <span>Contraer</span> : null}
         </button>
+      </div>
+
+      <div className="sidebar__section">
+        {!collapsed ? <p className="eyebrow">Vista</p> : null}
+        <div className={`view-switcher ${collapsed ? "is-collapsed" : ""}`} data-testid="workspace-view-switcher">
+          <button
+            className={`view-switcher__button ${workspaceView === "kanban" ? "is-active" : ""}`}
+            type="button"
+            onClick={() => onWorkspaceViewChange("kanban")}
+            title="Vista kanban"
+            aria-label="Vista kanban"
+            data-testid="workspace-view-kanban"
+          >
+            <span className="view-switcher__icon">K</span>
+            {!collapsed ? <span>Kanban</span> : null}
+          </button>
+          <button
+            className={`view-switcher__button ${workspaceView === "graph" ? "is-active" : ""}`}
+            type="button"
+            onClick={() => onWorkspaceViewChange("graph")}
+            title="Vista grafo"
+            aria-label="Vista grafo"
+            data-testid="workspace-view-graph"
+          >
+            <span className="view-switcher__icon">G</span>
+            {!collapsed ? <span>Grafo</span> : null}
+          </button>
+        </div>
       </div>
 
       {!collapsed ? (

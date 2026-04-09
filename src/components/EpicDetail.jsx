@@ -18,7 +18,7 @@ export function EpicDetail({ epic, stories, onClose, onEdit, onCreateStory }) {
   };
 
   return (
-    <aside className="detail-panel" onClick={(event) => event.stopPropagation()}>
+    <aside className="detail-panel" onClick={(event) => event.stopPropagation()} data-testid="epic-detail-panel">
       <div className="detail-panel__header">
         <div className="detail-panel__title-block">
           <p className="eyebrow">Épica</p>
