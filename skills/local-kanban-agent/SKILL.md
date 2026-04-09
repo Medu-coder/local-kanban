@@ -155,6 +155,49 @@ Si no existe un documento de specs, el orquestador puede derivar el plan leyendo
 
 Este es un best practice, no un requisito. Las historias pueden crearse por cualquier via valida.
 
+### Monitorizacion y gestion de bloqueos
+
+El orquestador no termina cuando lanza los especialistas. Tiene la vision global del proyecto que ningun especialista posee individualmente, y debe usarla para detectar y resolver bloqueos.
+
+#### Senales de alerta a monitorizar
+
+El orquestador debe leer periodicamente las historias del proyecto y evaluar:
+
+| Senal | Como detectarla | Significado |
+| --- | --- | --- |
+| Agente estancado | `status: developing` y `last_agent_update` sin cambios durante un tiempo prolongado | El especialista puede estar bloqueado sin haberlo declarado |
+| Bloqueo declarado | `agent_status_note` describe un impedimento explicitamente | El especialista ha reconocido que no puede avanzar solo |
+| Dependencia sin resolver | `blocked_by` contiene historias con `status != done` | La historia no puede avanzar hasta que se complete la dependencia |
+| Criterios de readiness sin cumplir | `ready_criteria` incompletos y la historia lleva tiempo en `backlog` | Nadie ha tomado accion para cumplir las condiciones de entrada |
+| Historia sin `agent_owner` | `execution_mode: agent` pero `agent_owner: null` | Ningún especialista ha tomado ownership; la historia no avanza |
+
+#### Acciones disponibles para el orquestador
+
+Ante una alerta, el orquestador puede tomar las siguientes acciones segun el tipo de bloqueo:
+
+**Aportar contexto y guia:**
+- Actualizar `agent_status_note` de la historia bloqueada con informacion global que el especialista no tiene (dependencias en otros modulos, decisiones de arquitectura, prioridad relativa).
+- Dejar en el cuerpo Markdown de la historia un handoff explicito con el contexto necesario para desbloquear.
+
+**Resolver dependencias:**
+- Si una historia que bloquea a otra lleva tiempo estancada, el orquestador puede reasignar su `agent_owner` a un especialista diferente o mas disponible.
+- Si la dependencia ya esta resuelta fuera del Kanban (trabajo hecho pero no registrado), actualizar el `status` de la historia bloqueante a `done`.
+- Si la dependencia es imposible de resolver, evaluar si se puede eliminar del `blocked_by` con justificacion explicita en `agent_status_note`.
+
+**Reasignar ownership:**
+- Si un especialista lleva demasiado tiempo sin actualizar su historia, el orquestador puede cambiar `agent_owner` a otro especialista con capacidades equivalentes y dejar trazabilidad del relevo en `agent_status_note`.
+
+**Replantear el plan:**
+- Si un bloqueo revela un problema de diseno en el desglose original, el orquestador puede crear nuevas historias, modificar dependencias existentes o reordenar prioridades para desatascar el flujo global.
+- Ante cambios significativos en el plan, actualizar el `agent_status_note` de las historias afectadas para que los especialistas tengan contexto actualizado.
+
+#### Lo que el orquestador nunca debe hacer durante la monitorizacion
+
+- No ejecutar trabajo tecnico de las historias en lugar del especialista asignado.
+- No cambiar `agent_owner` sin dejar nota del relevo en `agent_status_note`.
+- No marcar una historia como `done` sin verificar que el trabajo esta realmente completo.
+- No eliminar dependencias (`blocked_by`) sin entender por que existian.
+
 ## Bootstrap: registrar y conectar un proyecto nuevo
 
 Este es el flujo completo para que un agente en cualquier repositorio empiece a operar con `Local Kanban`.
@@ -652,6 +695,8 @@ labels: []
 
 ## Flujo operativo del orquestador
 
+**Fase 1 — Planificacion:**
+
 1. Confirmar `KANBAN_ROOT`. Si no esta en el contexto, pedirlo.
 2. Registrar el proyecto en `KANBAN_ROOT/config/projects.json` si no existe (ver Bootstrap).
 3. Leer el documento de especificaciones del proyecto o el repositorio para entender el trabajo.
@@ -661,8 +706,18 @@ labels: []
    - Usar siempre `execution_mode: agent` (o `hybrid` si hay intervencion humana prevista).
    - Declarar `blocked_by` cuando haya dependencias entre historias.
    - Incluir `context_files` si hay archivos clave que el especialista debe revisar primero.
-6. Una vez creadas todas las historias, leer el proyecto y extraer los `agent_owner` unicos con historias ejecutables (ver seccion "Modelo multiagéntico").
+
+**Fase 2 — Lanzamiento:**
+
+6. Leer el proyecto y extraer los `agent_owner` unicos con historias ejecutables (ver "Como el orquestador determina que agentes invocar").
 7. Invocar un agente especialista por cada `agent_owner` unico, pasandole `KANBAN_ROOT`, el ID del proyecto y su identidad como `agent_owner`.
+
+**Fase 3 — Monitorizacion continua:**
+
+8. Leer periodicamente el estado del proyecto para detectar bloqueos (ver "Monitorizacion y gestion de bloqueos").
+9. Ante cada alerta, tomar la accion correspondiente: aportar contexto, resolver dependencias, reasignar ownership o replantear el plan.
+10. Si se lanzan nuevos especialistas o se reasignan historias, verificar que el contexto que reciben es suficiente para operar.
+11. El orquestador permanece activo hasta que todas las historias del proyecto esten en `done`.
 
 ## Flujo operativo del especialista
 
