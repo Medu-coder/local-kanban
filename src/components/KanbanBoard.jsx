@@ -137,6 +137,7 @@ export function KanbanBoard({
                     className="epic-lane__title-button"
                     type="button"
                     data-sidepanel-action="true"
+                    data-testid={`epic-lane-title-${lane.id}`}
                     onClick={() => {
                       if (lane.id !== "__no_epic__") {
                         onSelectEpic(lane.id);

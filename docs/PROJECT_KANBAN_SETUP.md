@@ -1,10 +1,12 @@
 # Project Kanban Setup
 
-Este documento está pensado para que otro agente pueda preparar cualquier repositorio local para integrarlo con `Local Kanban`.
+Este documento está pensado para preparar cualquier repositorio local para integrarlo con `Local Kanban`.
 
 ## Objetivo
 
 Dejar el proyecto con una estructura estándar para que la app lea épicas e historias desde Markdown sin configuración adicional aparte de la ruta en `config/projects.json`.
+
+La semantica normativa de cada campo y la politica universal para agentes viven en `skills/local-kanban-agent/SKILL.md`. Este documento solo cubre preparacion y formato base.
 
 ## Estructura esperada
 
@@ -26,10 +28,15 @@ docs/
    - `developing`
    - `testing`
    - `done`
-4. Las historias deben referenciar una épica mediante el campo `epic`.
+4. Las historias pueden referenciar una épica mediante el campo `epic`, pero no es obligatorio. Si no lo hacen, el board las agrupa en `Sin épica`.
 5. El `id` debe ser estable y único dentro del proyecto.
 6. El cuerpo Markdown puede contener toda la información libre adicional.
 7. Para workflows con agentes, usar campos explícitos de ownership, dependencias y checklists.
+
+## Regla de uso
+
+- Usa siempre el contrato normativo para decidir semantica, ownership y permisos de ejecucion.
+- Este documento solo define estructura minima y recomendaciones de preparacion.
 
 ## Plantilla de épica
 
@@ -124,3 +131,5 @@ La autenticación inicial se hará con email y password.
 4. No inventar estados fuera del conjunto soportado.
 5. Mantener rutas y nombres consistentes para que el Kanban pueda leerlas.
 6. Si la historia va a ser ejecutada por un agente, usar `agent_owner`, `execution_mode`, dependencias y checklists desde el inicio.
+7. Si el trabajo avanza, actualizar tambien `agent_status_note`, `last_agent_update`, subtareas y criterios manuales.
+8. Consultar `skills/local-kanban-agent/SKILL.md` para cualquier duda semantica o de politica operativa.

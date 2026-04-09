@@ -113,6 +113,35 @@ test("crea y edita una épica desde el gestor", async ({ page }) => {
   await expect(page.getByTestId("epic-manager-panel").getByText("Nueva épica E2E")).toBeVisible();
 });
 
+test("permite crear una historia en developing con ready checklist vacío", async ({ page }) => {
+  await page.getByTestId("create-story-button").click();
+  await page.getByTestId("story-title-input").fill("Historia lista sin checklist");
+  await page.getByTestId("story-agent-owner-input").fill("codex-ready");
+  await page.getByTestId("story-execution-mode-select").selectOption("agent");
+  await page.getByTestId("story-status-select").selectOption("developing");
+  await page.getByTestId("story-context-files-input").fill("src/ready.ts");
+  await page.getByTestId("save-story-button").click();
+
+  await expect(page.getByTestId("story-card-STO-historia-lista-sin-checklist")).toBeVisible();
+  await expect(page.getByTestId("dropzone-__no_epic__-developing")).toContainText(
+    "Historia lista sin checklist"
+  );
+});
+
+test("no valida done cuando el checklist de cierre está vacío", async ({ page }) => {
+  await page.getByTestId("create-story-button").click();
+  await page.getByTestId("story-title-input").fill("Historia sin validacion final");
+  await page.getByTestId("story-agent-owner-input").fill("codex-done");
+  await page.getByTestId("story-status-select").selectOption("done");
+  await page.getByTestId("story-context-files-input").fill("src/done.ts");
+  await page.getByTestId("save-story-button").click();
+
+  await expect(page.getByTestId("story-card-STO-historia-sin-validacion-final")).toBeVisible();
+  await expect(page.getByTestId("story-card-STO-historia-sin-validacion-final")).not.toContainText(
+    "Done validado"
+  );
+});
+
 test("marca subtareas desde el detalle y persiste el cambio", async ({ page }) => {
   await page.getByTestId("story-card-STO-001").click();
   await page.getByText("Pintar indicadores").click();
@@ -142,7 +171,7 @@ test("crea una historia sin épica y luego la mueve a una épica", async ({ page
 });
 
 test("abre y cierra detalle de épica pinchando fuera", async ({ page }) => {
-  await page.getByRole("button", { name: "Core Agent Flow" }).click();
+  await page.getByTestId("epic-lane-title-EPI-001").click();
   await expect(page.getByText("Historias de la épica")).toBeVisible();
   await page.getByTestId("kanban-board").click({ position: { x: 10, y: 10 } });
   await expect(page.getByText("Historias de la épica")).toHaveCount(0);

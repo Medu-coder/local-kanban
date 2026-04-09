@@ -99,7 +99,7 @@ Para distribución, usa [config/projects.example.json](config/projects.example.j
 
 ## Skill Para Agentes
 
-La skill distribuible para que cualquier agente entienda cómo operar con este Kanban está en:
+La skill distribuible y normativa para que cualquier agente entienda cómo operar con este Kanban está en:
 
 [skills/local-kanban-agent/SKILL.md](skills/local-kanban-agent/SKILL.md)
 
@@ -110,8 +110,8 @@ La skill específica para instalar el repositorio desde Git y dejarlo listo est�
 Uso previsto:
 - el agente trabaja sobre los `.md` como fuente de verdad
 - la UI del Kanban se usa como espejo visual para humanos
-- la skill es autocontenida y debe ser el único documento que un agente necesite leer para saber cómo operar
+- la skill es el unico punto de consulta para semantica y politica operativa
 
 ## Formato recomendado
 
-Revisa [docs/PROJECT_KANBAN_SETUP.md](docs/PROJECT_KANBAN_SETUP.md) y los ejemplos de [examples/kanban](examples/kanban).
+Revisa [docs/PROJECT_KANBAN_SETUP.md](docs/PROJECT_KANBAN_SETUP.md), la skill de [skills/local-kanban-agent/SKILL.md](skills/local-kanban-agent/SKILL.md) y los ejemplos de [examples/kanban](examples/kanban).

@@ -252,7 +252,15 @@ export default function App() {
       }
 
       await refreshProjects();
-      resetEditorState();
+      setSelectedStory(null);
+      setSelectedEpic(null);
+      setEditorStory(null);
+      setEditorEpic(null);
+      setStoryDraft(null);
+      setIsEditorOpen(false);
+      setIsEditorDirty(false);
+      setSidePanelMode("epic-manager");
+      setRightSidebarCollapsed(false);
       runPendingEditorAction();
     } catch (saveError) {
       setError(saveError.message);
