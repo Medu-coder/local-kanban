@@ -1,0 +1,8 @@
+[
+  {
+    "id": "mi-proyecto",
+    "name": "Mi proyecto",
+    "rootPath": "/ruta/absoluta/al/proyecto",
+    "docsPath": "docs/kanban"
+  }
+]
