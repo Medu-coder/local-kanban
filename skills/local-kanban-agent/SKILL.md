@@ -97,7 +97,7 @@ El agente orquestador es el punto de entrada. Sus responsabilidades son:
 2. Registrar el proyecto en el Kanban si aun no esta registrado.
 3. Leer el documento de especificaciones del proyecto o el repositorio para entender el trabajo a realizar.
 4. Crear las epicas (agrupadores tematicos del trabajo).
-5. Crear las historias, asignando a cada una el `agent_owner` que corresponde al especialista con las capacidades para ejecutarla. Usar siempre `execution_mode: agent`.
+5. Crear las historias, asignando a cada una el `agent_owner` que corresponde al especialista con las capacidades para ejecutarla. Aplicar la politica de `execution_mode`: `agent` por defecto, `hybrid` si el trabajo requiere participacion humana puntual, `human` solo como excepcion con justificacion explicita en el cuerpo de la historia (ver "Politica de execution_mode al crear historias").
 6. Determinar que agentes especialistas hay que invocar leyendo las historias pendientes.
 7. Invocar un agente especialista por cada `agent_owner` distinto con historias ejecutables.
 
@@ -495,6 +495,22 @@ POST /api/projects/:projectId/stories/:storyId/criteria/:criteriaType/:criteriaI
 - `agent_owner` identifica al agente ejecutor esperado.
 - Si un agente distinto al `agent_owner` quiere ejecutar, debe reflejar el relevo en `agent_status_note` y actualizar `agent_owner` antes o durante la toma de ownership.
 
+### Politica de execution_mode al crear historias
+
+Al crear historias, el orquestador debe maximizar el uso de `agent` y minimizar `human` al maximo. La regla de decision es:
+
+1. **¿Puede un agente completar este trabajo de principio a fin sin intervencion humana?** → `agent`. Este es el caso por defecto; la mayoria de historias deben ser `agent`.
+2. **¿El trabajo puede hacerlo un agente en su mayor parte, pero requiere participacion humana en algun paso concreto?** (revision de producto, aprobacion, decision estrategica, aportacion de contexto que el agente no puede obtener) → `hybrid`.
+3. **¿El trabajo es genuinamente imposible para un agente?** (contacto con personas externas, firma legal, accion fisica fuera del entorno digital, decision ejecutiva de negocio) → `human`. **Obligatorio:** el cuerpo de la historia debe justificar explicitamente por que no puede ser `agent` o `hybrid`. Una historia `human` sin justificacion es un error de planificacion.
+
+Resumen de valores:
+
+| `execution_mode` | Cuando usarlo | Frecuencia esperada |
+| --- | --- | --- |
+| `agent` | El agente puede completar el trabajo de principio a fin | Mayoria de historias |
+| `hybrid` | Agente hace la mayor parte; humano interviene puntualmente | Casos con validacion o input humano necesario |
+| `human` | Trabajo imposible para un agente; justificacion obligatoria en el cuerpo | Excepcion rara y justificada |
+
 ## Story Contract
 
 ### Invariantes globales de historia
@@ -703,7 +719,7 @@ labels: []
 4. Crear las epicas necesarias via API o archivo.
 5. Crear las historias: una por unidad de trabajo atomica. Para cada historia:
    - Asignar `agent_owner` al especialista con las capacidades adecuadas para ese trabajo.
-   - Usar siempre `execution_mode: agent` (o `hybrid` si hay intervencion humana prevista).
+   - Asignar `execution_mode` segun la politica: `agent` por defecto, `hybrid` si el agente necesita participacion humana puntual, `human` solo si el trabajo es genuinamente imposible para un agente y con justificacion explicita en el cuerpo de la historia (ver "Politica de execution_mode al crear historias").
    - Declarar `blocked_by` cuando haya dependencias entre historias.
    - Incluir `context_files` si hay archivos clave que el especialista debe revisar primero.
 
@@ -773,4 +789,5 @@ docs/kanban/stories/
 - No marcar criterios derivados directamente ni via API; actualizar el dato fuente.
 - No enviar campos en snake_case a la API; usa camelCase (ver tabla de nomenclatura).
 - No omitir `executionMode` en el payload de API; el default es `"human"`.
+- No asignar `execution_mode: human` sin justificacion explicita en el cuerpo de la historia; `human` es una excepcion, no un default seguro.
 - No crear IDs de historia o epica sin seguir el patron `STO-*` / `EPI-*` a menos que haya razon explicita.
