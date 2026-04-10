@@ -69,11 +69,14 @@ Ejemplo:
 Cada proyecto monitorizado debe tener:
 
 ```text
+AGENTS.md
 docs/
   kanban/
     epics/
     stories/
 ```
+
+`AGENTS.md` es obligatorio: debe importar por referencia `skills/local-kanban-agent/SKILL.md` de este repositorio para que cualquier agente externo herede exactamente el mismo contrato de trabajo.
 
 La guía operativa para preparar esos repositorios está en [PROJECT_KANBAN_SETUP.md](PROJECT_KANBAN_SETUP.md).
 

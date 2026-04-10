@@ -9,6 +9,41 @@ Usa esta skill cuando trabajes en un repositorio que esté monitorizado por `Loc
 
 Esta skill es la fuente normativa unica para interpretar `Local Kanban` desde un agente. Si otro documento resume o simplifica estas reglas, esta skill tiene precedencia.
 
+## Contrato local obligatorio en el repositorio externo
+
+Antes de crear, editar o ejecutar cualquier historia, el agente debe garantizar que el repositorio externo (`TU_PROYECTO`) contiene un archivo `AGENTS.md` en su raiz. Ese archivo es obligatorio y actua como contrato local de trabajo para cualquier agente que opere en ese repositorio.
+
+Si `TU_PROYECTO/AGENTS.md` no existe, hay que crearlo **antes de empezar a trabajar**. Si ya existe, hay que ampliarlo **sin borrar ni debilitar** sus reglas actuales para incluir explicitamente el contrato de `Local Kanban`.
+
+Reglas obligatorias de este archivo:
+
+- Debe vivir en `TU_PROYECTO/AGENTS.md`.
+- Debe referenciar de forma explicita `KANBAN_ROOT/skills/local-kanban-agent/SKILL.md`.
+- Debe declarar que las reglas de esa skill quedan importadas y aplican **integramente**, con precedencia sobre cualquier resumen local.
+- Debe dejar claro que ningun agente puede ignorar, reinterpretar o relajar esas reglas.
+- Debe exigir la actualizacion continua del Kanban durante la ejecucion real del trabajo.
+
+Plantilla minima obligatoria:
+
+```md
+# Agent Work Contract
+
+Este repositorio trabaja bajo el contrato operativo definido por Local Kanban.
+
+Referencia normativa obligatoria:
+- `KANBAN_ROOT/skills/local-kanban-agent/SKILL.md`
+
+Importacion de reglas:
+- Todas las reglas, obligaciones, restricciones, politicas de ejecucion y criterios de actualizacion definidos en `KANBAN_ROOT/skills/local-kanban-agent/SKILL.md` quedan importados por referencia y forman parte de este contrato de trabajo sin excepciones.
+- Si este archivo entra en conflicto con esa skill, prevalece la skill de Local Kanban.
+- Ningun agente puede empezar trabajo tecnico, crear historias, mover estados ni cerrar tareas sin cumplir antes ese contrato.
+- Mantener el Kanban actualizado durante la ejecucion real del trabajo es obligatorio, no opcional.
+```
+
+`KANBAN_ROOT` debe sustituirse por la ruta absoluta real al directorio de este repositorio. No dejarlo como marcador si el agente ya conoce la ruta.
+
+**Prohibicion operativa:** si el repositorio externo no tiene este contrato local correctamente escrito, el agente no debe empezar trabajo sustantivo. Su primera tarea es crear o corregir `AGENTS.md`.
+
 ## Objetivo
 
 Definir una semantica universal y verificable para que cualquier agente:
@@ -274,7 +309,19 @@ No existe endpoint de API para registrar proyectos. Editar el archivo es la unic
 
 **El servidor lee `config/projects.json` en cada peticion.** No es necesario reiniciarlo despues de añadir un proyecto.
 
-### Paso 3 — Crear la estructura en el proyecto
+### Paso 3 — Crear o actualizar el contrato local del repositorio externo
+
+En la raiz del repositorio externo (`TU_PROYECTO`) debe existir `AGENTS.md` con la importacion normativa de esta skill. Este paso es obligatorio y debe completarse antes de crear historias, ejecutar trabajo tecnico o invocar especialistas.
+
+Reglas de edicion:
+
+1. Si `TU_PROYECTO/AGENTS.md` no existe, crearlo.
+2. Si existe, leerlo y conservar sus reglas actuales.
+3. Añadir una seccion explicita que importe `KANBAN_ROOT/skills/local-kanban-agent/SKILL.md` sin excepciones.
+4. Escribir la ruta real de `KANBAN_ROOT` si el agente la conoce.
+5. No sustituir este paso por una nota informal en `README.md`; el contrato local obligatorio vive en `AGENTS.md`.
+
+### Paso 4 — Crear la estructura en el proyecto
 
 Las carpetas deben crearse en el repositorio del proyecto externo (`TU_PROYECTO`), no en `KANBAN_ROOT`. Se crean automaticamente al crear la primera historia o epica via API. Si se usan archivos directamente, deben existir antes:
 
@@ -286,7 +333,7 @@ mkdir -p docs/kanban/stories
 
 Si `docsPath` en `config/projects.json` tiene un valor distinto a `docs/kanban`, usar ese en lugar del anterior.
 
-### Paso 4 — Crear epicas e historias
+### Paso 5 — Crear epicas e historias
 
 Dos formas validas:
 
@@ -294,7 +341,7 @@ Dos formas validas:
 
 **Via API REST (requiere servidor en marcha):** usar `http://localhost:4010`. Ver seccion "API REST".
 
-### Paso 5 — Verificar que el Kanban lee el proyecto
+### Paso 6 — Verificar que el Kanban lee el proyecto
 
 Si el servidor esta en marcha:
 
@@ -342,6 +389,7 @@ La respuesta de `/api/projects` debe incluir el proyecto con sus epicas e histor
 - Asumir que su directorio de trabajo actual es `KANBAN_ROOT`: cuando trabaja en un repo externo, son rutas diferentes
 - Escribir `.md` de historias o epicas dentro de `KANBAN_ROOT`: esos archivos pertenecen al repositorio del proyecto
 - Usar `KANBAN_ROOT` como valor de `rootPath` en `config/projects.json`: ese campo debe apuntar al proyecto externo
+- Empezar trabajo tecnico en `TU_PROYECTO` sin que exista `TU_PROYECTO/AGENTS.md` importando esta skill
 
 ## API REST
 

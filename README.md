@@ -111,7 +111,8 @@ Uso previsto:
 - el agente trabaja sobre los `.md` como fuente de verdad
 - la UI del Kanban se usa como espejo visual para humanos
 - la skill es el unico punto de consulta para semantica y politica operativa
+- cualquier repo externo debe tener `AGENTS.md` en su raiz importando esta skill antes de que un agente empiece a trabajar
 
 ## Formato recomendado
 
-Revisa [docs/PROJECT_KANBAN_SETUP.md](docs/PROJECT_KANBAN_SETUP.md), la skill de [skills/local-kanban-agent/SKILL.md](skills/local-kanban-agent/SKILL.md) y los ejemplos de [examples/kanban](examples/kanban).
+Revisa [docs/PROJECT_KANBAN_SETUP.md](docs/PROJECT_KANBAN_SETUP.md), la plantilla [docs/AGENTS_WORK_CONTRACT_TEMPLATE.md](docs/AGENTS_WORK_CONTRACT_TEMPLATE.md), la skill de [skills/local-kanban-agent/SKILL.md](skills/local-kanban-agent/SKILL.md) y los ejemplos de [examples/kanban](examples/kanban).

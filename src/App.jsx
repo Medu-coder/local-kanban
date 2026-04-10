@@ -22,6 +22,7 @@ import { EpicDetail } from "./components/EpicDetail";
 
 const setupSteps = [
   "Añade tus proyectos en config/projects.json con rootPath y docsPath.",
+  "En cada proyecto crea AGENTS.md en la raiz importando la skill normativa de Local Kanban.",
   "En cada proyecto crea docs/kanban/epics y docs/kanban/stories.",
   "Usa la plantilla de docs/PROJECT_KANBAN_SETUP.md para que otro agente deje el repo preparado.",
 ];
