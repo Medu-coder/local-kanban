@@ -709,6 +709,52 @@ description: Resumen corto
 labels: []
 ```
 
+## Punto de entrada: qué hacer cuando te dicen "empieza a trabajar"
+
+Antes de actuar, el agente debe leer el estado actual del proyecto y determinar su rol y fase. Esta es la unica decision que tomar; todo lo demas esta prescrito por los flujos siguientes.
+
+### Arbol de decision de arranque
+
+```
+¿Tiene el proyecto historias con execution_mode: agent o hybrid, status != done, y agent_owner asignado?
+│
+├── NO → Eres el orquestador en Fase 1.
+│         Planifica: crea epicas e historias.
+│         Cuando termines, continua a Fase 2.
+│
+└── SI → ¿Todas esas historias estan en status: done?
+          │
+          ├── SI → El proyecto esta completado. Informar al humano.
+          │
+          └── NO → ¿Tienes una identidad como agent_owner en el contexto?
+                    │
+                    ├── SI → Eres un especialista.
+                    │         Ve al Flujo operativo del especialista.
+                    │
+                    └── NO → Eres el orquestador en Fase 2 o 3.
+                              Comprueba si hay historias sin especialista activo:
+                              - Si hay agent_owners sin instancia en marcha → Fase 2: lanzar especialistas.
+                              - Si ya estan en marcha → Fase 3: monitorizar y desbloquear.
+```
+
+### Como lanzar especialistas en paralelo
+
+El orquestador debe lanzar **un subagente por cada `agent_owner` unico** con historias ejecutables. Los subagentes se lanzan **simultaneamente**, no en secuencia, salvo que todas las historias de un especialista esten bloqueadas por historias de otro (en cuyo caso ese especialista puede esperar).
+
+Cada subagente recibe como contexto minimo:
+- `KANBAN_ROOT`: ruta absoluta al directorio de Local Kanban
+- ID del proyecto en `config/projects.json`
+- Su identidad: el valor exacto de `agent_owner` que tiene asignado en las historias
+- Ruta al repositorio del proyecto si necesita leer o modificar codigo
+
+El orquestador no espera a que un especialista termine antes de lanzar el siguiente. El paralelismo es el comportamiento esperado y correcto.
+
+### Señal de que la ejecucion ha terminado
+
+El orquestador puede cerrar la sesion cuando se cumplan simultaneamente:
+- Todas las historias con `execution_mode: agent` o `hybrid` tienen `status: done`
+- No hay historias `human` pendientes sin accion humana registrada
+
 ## Flujo operativo del orquestador
 
 **Fase 1 — Planificacion:**
@@ -739,15 +785,21 @@ labels: []
 
 1. Confirmar `KANBAN_ROOT`, ID del proyecto y propia identidad como `agent_owner`.
 2. Leer las historias del proyecto que le corresponden: `execution_mode: agent` o `hybrid`, `agent_owner == propia identidad`, `status != done`.
-3. Para cada historia, en orden de prioridad y dependencias:
-   a. Comprobar bloqueos: si `blocked_by` tiene historias no completadas, no ejecutar.
-   b. Comprobar `ready_criteria`: si no estan completos, no mover a `developing`.
-   c. Tomar posesion reflejandolo en `agent_owner` si no esta asignada.
-   d. Ejecutar el trabajo.
-   e. Actualizar `last_agent_update` con timestamp ISO y `agent_status_note` con el estado actual.
+3. Ordenar las historias: primero las que no tienen `blocked_by` pendientes y tienen `ready_criteria` completos (o sin criterios); despues el resto por prioridad.
+4. Para cada historia ejecutable, en ese orden:
+   a. Comprobar bloqueos: si `blocked_by` tiene historias con `status != done`, saltar a la siguiente.
+   b. Comprobar `ready_criteria`: si no estan completos, saltar a la siguiente.
+   c. Confirmar que `agent_owner` es la propia identidad o tomarlo si esta vacio.
+   d. Mover a `developing` via API.
+   e. Ejecutar el trabajo.
    f. Completar subtareas y criterios manuales a medida que se verifican.
-   g. Avanzar el estado via API si el servidor esta en marcha.
-4. Usar la UI solo como verificacion visual final, nunca como base para decidir que escribir.
+   g. Actualizar `last_agent_update` y `agent_status_note` con el estado actual tras cada cambio real.
+   h. Mover a `testing` cuando el trabajo este hecho pero pendiente de validacion.
+   i. Mover a `done` cuando el trabajo este completo y validado.
+5. **Tras marcar una historia como `done`:** releer el proyecto para detectar si alguna historia que estaba bloqueada por esta ha quedado desbloqueada. Si esa historia tiene `agent_owner == propia identidad`, incorporarla al ciclo. Si tiene un `agent_owner` distinto, actualizar `agent_status_note` de esa historia con una nota de que el bloqueo se ha resuelto para que el orquestador o el otro especialista lo detecten.
+6. Repetir desde el paso 4 hasta que no queden historias ejecutables propias.
+7. Si quedan historias propias pero todas bloqueadas: actualizar `agent_status_note` de cada una con el impedimento concreto y detener la ejecucion. El orquestador tomara accion.
+8. Usar la UI solo como verificacion visual final, nunca como base para decidir que escribir.
 
 ## Como preparar un proyecto nuevo para Local Kanban
 
