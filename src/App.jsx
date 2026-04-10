@@ -26,7 +26,7 @@ const setupSteps = [
   "Usa la plantilla de docs/PROJECT_KANBAN_SETUP.md para que otro agente deje el repo preparado.",
 ];
 const DENSITY_STORAGE_KEY = "local-kanban.ui-density";
-const DEFAULT_DENSITY = "compact";
+const DEFAULT_DENSITY = "dense";
 
 function loadInitialDensity() {
   if (typeof window === "undefined") {
@@ -63,6 +63,7 @@ export default function App() {
   const [sidePanelMode, setSidePanelMode] = useState("detail");
   const [searchQuery, setSearchQuery] = useState("");
   const [epicFilter, setEpicFilter] = useState("all");
+  const [executionModeFilter, setExecutionModeFilter] = useState("all");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
@@ -139,6 +140,13 @@ export default function App() {
         return false;
       }
 
+      const matchesExecutionMode =
+        executionModeFilter === "all" || story.executionMode === executionModeFilter;
+
+      if (!matchesExecutionMode) {
+        return false;
+      }
+
       if (!normalizedQuery) {
         return true;
       }
@@ -170,7 +178,7 @@ export default function App() {
     };
 
     return { ...selectedProject, stories, stats };
-  }, [selectedProject, searchQuery, epicFilter]);
+  }, [selectedProject, searchQuery, epicFilter, executionModeFilter]);
 
   useEffect(() => {
     if (!visibleProject) {
@@ -606,7 +614,21 @@ export default function App() {
         <div className="workspace-canvas">
           <section className="topbar">
             <div className="topbar__headline">
-              <p className="eyebrow">Proyecto activo</p>
+              <div className="topbar__headline-meta">
+                <p className="eyebrow">Proyecto activo</p>
+                <label className="topbar__density-control">
+                  <span>Densidad</span>
+                  <select
+                    data-testid="density-select"
+                    value={density}
+                    onChange={(event) => setDensity(event.target.value)}
+                  >
+                    <option value="comfortable">Cómoda</option>
+                    <option value="compact">Compacta</option>
+                    <option value="dense">Densa</option>
+                  </select>
+                </label>
+              </div>
               <h2 data-testid="current-project-name">{selectedProject?.name ?? "Sin proyectos configurados"}</h2>
               <p className="topbar__path muted">
                 <span>Origen</span>
@@ -665,12 +687,12 @@ export default function App() {
           {selectedProject ? (
             <Toolbar
               project={selectedProject}
-              density={density}
-              onDensityChange={setDensity}
               searchQuery={searchQuery}
               onSearchQueryChange={setSearchQuery}
               epicFilter={epicFilter}
               onEpicFilterChange={setEpicFilter}
+              executionModeFilter={executionModeFilter}
+              onExecutionModeFilterChange={setExecutionModeFilter}
               onCreateStory={() => {
                 requestEditorTransition(() => {
                   setEditorStory(null);

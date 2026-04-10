@@ -1,11 +1,11 @@
 export function Toolbar({
   project,
-  density,
-  onDensityChange,
   searchQuery,
   onSearchQueryChange,
   epicFilter,
   onEpicFilterChange,
+  executionModeFilter,
+  onExecutionModeFilterChange,
   onCreateStory,
   onManageEpics,
   visibleCount,
@@ -42,16 +42,17 @@ export function Toolbar({
             </select>
           </label>
 
-          <label className="field field--density">
-            <span>Densidad</span>
+          <label className="field">
+            <span>Modo</span>
             <select
-              data-testid="density-select"
-              value={density}
-              onChange={(event) => onDensityChange(event.target.value)}
+              data-testid="execution-mode-filter"
+              value={executionModeFilter}
+              onChange={(event) => onExecutionModeFilterChange(event.target.value)}
             >
-              <option value="comfortable">Cómoda</option>
-              <option value="compact">Compacta</option>
-              <option value="dense">Densa</option>
+              <option value="all">Todos</option>
+              <option value="human">Human</option>
+              <option value="agent">Agent</option>
+              <option value="hybrid">Hybrid</option>
             </select>
           </label>
 

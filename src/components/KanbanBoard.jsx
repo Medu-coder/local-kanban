@@ -101,11 +101,11 @@ export function KanbanBoard({
   onToggleLane,
 }) {
   const epicLanes = buildEpicLanes(project).filter((lane) => {
-    if (epicFilter === "all") {
-      return true;
+    if (epicFilter !== "all" && lane.id !== epicFilter) {
+      return false;
     }
 
-    return lane.id === epicFilter;
+    return lane.storyCount > 0;
   });
 
   function handleBoardSurfaceClick(event) {
