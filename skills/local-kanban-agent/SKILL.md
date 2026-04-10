@@ -155,6 +155,37 @@ Si no existe un documento de specs, el orquestador puede derivar el plan leyendo
 
 Este es un best practice, no un requisito. Las historias pueden crearse por cualquier via valida.
 
+### Politica de iteracion continua
+
+**Los agentes no paran salvo causa justificada.** El comportamiento por defecto es iterar indefinidamente hasta que todo el trabajo este en `done`.
+
+#### Para el especialista
+
+El especialista no termina su sesion al completar una historia. Despues de cada `done` debe:
+1. Releer el proyecto para detectar historias desbloqueadas o nuevas historias asignadas a su `agent_owner`.
+2. Continuar con la siguiente historia ejecutable.
+3. Repetir hasta que no quede ninguna historia propia ejecutable.
+
+El especialista **solo puede detenerse** en estos casos, y debe documentarlo:
+
+| Causa de parada | Accion obligatoria antes de parar |
+| --- | --- |
+| Todas las historias propias en `done` | Notificar al orquestador via `agent_status_note` en la ultima historia completada |
+| Historia bloqueada por accion humana inevitable (firma, aprobacion externa, decision ejecutiva) | Escribir el impedimento en `agent_status_note` y esperar instruccion del orquestador |
+| Bloqueo tecnico que el agente no puede resolver ni el orquestador puede desbloquear remotamente | Escribir el impedimento detallado en `agent_status_note`; el orquestador decidira si reasigna o escala al humano |
+
+Parar por cualquier otra razon — incertidumbre, falta de contexto, duda sobre el enfoque — **no es valido**. En esos casos el agente debe consultar al orquestador actualizando `agent_status_note` con la pregunta concreta y continuar con otras historias ejecutables mientras espera respuesta.
+
+#### Para el orquestador
+
+El orquestador tampoco termina al lanzar los especialistas. Permanece activo como fuente de contexto y guia hasta que el proyecto este completo:
+
+- Monitoriza periodicamente el estado de todas las historias.
+- Cuando un especialista tiene dudas o esta bloqueado, lee su `agent_status_note` y responde actualizando esa nota o el cuerpo de la historia con el contexto necesario para desbloquear.
+- Si ningun especialista puede avanzar por causas que requieren intervencion humana real, el orquestador escala al humano con un resumen claro de que se necesita y por que.
+
+**El unico motivo legitimo para que el orquestador cierre la sesion** es que todas las historias de `execution_mode: agent` o `hybrid` esten en `done` o que las unicas pendientes sean de `execution_mode: human` esperando accion del humano.
+
 ### Monitorizacion y gestion de bloqueos
 
 El orquestador no termina cuando lanza los especialistas. Tiene la vision global del proyecto que ningun especialista posee individualmente, y debe usarla para detectar y resolver bloqueos.
@@ -713,11 +744,14 @@ Si `kind: derived`, debe tener:
 ### Regla normativa para agentes
 
 - Antes de mover a `developing`, el agente debe comprobar:
-  - bloqueos resueltos
+  - bloqueos resueltos (`blocked_by` vacio o todas las referencias en `done`)
   - `ready_criteria` completos
   - permiso de ejecucion segun `execution_mode` y `agent_owner`
-- Antes de mover a `testing`, el trabajo principal debe estar hecho y documentado.
-- Antes de mover a `done`, el trabajo debe estar terminado y el frontmatter debe reflejar el estado real.
+- Antes de mover a `testing`, el trabajo principal debe estar hecho, todas las subtareas completadas y `agent_status_note` actualizada.
+- Antes de mover a `done`:
+  - Todas las subtareas deben tener `done: true`. Sin excepcion.
+  - Todos los `done_criteria` manuales deben tener `checked: true`. Sin excepcion.
+  - `last_agent_update` y `agent_status_note` deben reflejar el cierre real.
 - Un agente no debe usar `done` como sustituto de `done validado`.
 
 ## Compatibilidad y contenido prohibido para contenido nuevo
@@ -817,7 +851,9 @@ El orquestador no espera a que un especialista termine antes de lanzar el siguie
 
 El orquestador puede cerrar la sesion cuando se cumplan simultaneamente:
 - Todas las historias con `execution_mode: agent` o `hybrid` tienen `status: done`
-- No hay historias `human` pendientes sin accion humana registrada
+- Las unicas historias pendientes (si las hay) son de `execution_mode: human` y estan documentadas con el handoff necesario para que el humano actue
+
+Cualquier otra situacion — historias bloqueadas, especialistas con dudas, dependencias sin resolver — no es una condicion de cierre. El orquestador debe seguir activo y resolver.
 
 ## Flujo operativo del orquestador
 
@@ -902,9 +938,13 @@ Un agente que completa trabajo sin actualizar el frontmatter es invisible para e
    g. Actualizar `last_agent_update` y `agent_status_note` con el estado actual tras cada cambio real.
    h. Mover a `testing` cuando el trabajo este hecho pero pendiente de validacion.
    i. Mover a `done` cuando el trabajo este completo y validado.
-5. **Tras marcar una historia como `done`:** releer el proyecto para detectar si alguna historia que estaba bloqueada por esta ha quedado desbloqueada. Si esa historia tiene `agent_owner == propia identidad`, incorporarla al ciclo. Si tiene un `agent_owner` distinto, actualizar `agent_status_note` de esa historia con una nota de que el bloqueo se ha resuelto para que el orquestador o el otro especialista lo detecten.
-6. Repetir desde el paso 4 hasta que no queden historias ejecutables propias.
-7. Si quedan historias propias pero todas bloqueadas: actualizar `agent_status_note` de cada una con el impedimento concreto y detener la ejecucion. El orquestador tomara accion.
+5. **Tras marcar una historia como `done`:** releer el proyecto para detectar si alguna historia que estaba bloqueada por esta ha quedado desbloqueada. Si esa historia tiene `agent_owner == propia identidad`, incorporarla al ciclo inmediatamente. Si tiene un `agent_owner` distinto, actualizar `agent_status_note` de esa historia con una nota de que el bloqueo se ha resuelto para que el orquestador o el otro especialista lo detecten.
+6. Repetir desde el paso 4. **El especialista no se detiene voluntariamente** entre historias; el ciclo es continuo hasta que se cumpla una condicion de parada valida (ver "Politica de iteracion continua").
+7. Si quedan historias propias pero todas bloqueadas:
+   - Actualizar `agent_status_note` de cada una con el impedimento concreto y detallado.
+   - Si el bloqueo es una duda o falta de contexto, no parar: describirlo en `agent_status_note` y esperar respuesta del orquestador. Si hay otras historias ejecutables de otro tipo, continuar con ellas.
+   - Si el bloqueo requiere accion humana inevitable, documentarlo y detener solo esa historia. Continuar con las demas si las hay.
+   - Solo detener la sesion completa cuando no quede ninguna historia ejecutable propia bajo ninguna circunstancia agéntica.
 8. Usar la UI solo como verificacion visual final, nunca como base para decidir que escribir.
 
 ## Como preparar un proyecto nuevo para Local Kanban
@@ -961,3 +1001,6 @@ docs/kanban/stories/
 - No inventar variantes de `execution_mode` (`autonomous`, `ai`, `bot`...): solo `human`, `agent`, `hybrid`.
 - No inventar variantes de `story_type` (`task`, `improvement`, `spike`...): solo `feature`, `bug`, `tech_debt`, `research`, `chore`.
 - No escribir `last_agent_update` con formatos de fecha distintos a ISO 8601 o `null`.
+- No detener la ejecucion por incertidumbre o falta de contexto sin haber consultado primero al orquestador via `agent_status_note`.
+- No considerar el trabajo terminado al completar una historia; el ciclo continua con las siguientes historias ejecutables.
+- No cerrar la sesion del orquestador mientras queden historias `agent` o `hybrid` sin `done`.
