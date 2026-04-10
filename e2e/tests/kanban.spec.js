@@ -188,6 +188,18 @@ test("colapsa y expande una épica sin perder historias", async ({ page }) => {
   await expect(page.getByTestId("dropzone-EPI-001-backlog")).toContainText("Preparar contrato agentico");
 });
 
+test("contrae todas las lanes visibles desde el resumen del toolbar", async ({ page }) => {
+  await expect(page.getByTestId("dropzone-EPI-001-backlog")).toContainText("Preparar contrato agentico");
+  await expect(page.getByTestId("toggle-lane-EPI-001")).toBeVisible();
+  await expect(page.getByTestId("toggle-lane-EPI-002")).toBeVisible();
+
+  await page.getByTestId("collapse-all-lanes-button").click();
+
+  await expect(page.getByTestId("dropzone-EPI-001-backlog")).toHaveCount(0);
+  await expect(page.getByTestId("dropzone-EPI-002-backlog")).toHaveCount(0);
+  await expect(page.getByTestId("collapse-all-lanes-button")).toBeDisabled();
+});
+
 test("mantiene los stages flotando con el scroll interno del workspace", async ({ page }) => {
   const mainPanel = page.locator(".main-panel");
   const stageRow = page.getByTestId("board-status-row");
@@ -234,8 +246,8 @@ test("alterna a la vista grafo y abre detalles desde un nodo", async ({ page }) 
   await expect(page.getByTestId("current-project-name")).toHaveText("Proyecto de ejemplo");
 });
 
-test("usa compact por defecto y mantiene el sticky del kanban tras cambiar densidad", async ({ page }) => {
-  await expect(page.getByTestId("density-select")).toHaveValue("compact");
+test("usa la densidad por defecto actual y mantiene el sticky del kanban tras cambiar densidad", async ({ page }) => {
+  await expect(page.getByTestId("density-select")).toHaveValue("dense");
 
   const mainPanel = page.locator(".main-panel");
   const stageRow = page.getByTestId("board-status-row");

@@ -135,8 +135,9 @@ El agente orquestador es el punto de entrada. Sus responsabilidades son:
 5. Crear las historias, asignando a cada una el `agent_owner` que corresponde al especialista con las capacidades para ejecutarla. Aplicar la politica de `execution_mode`: `agent` por defecto, `hybrid` si el trabajo requiere participacion humana puntual, `human` solo como excepcion con justificacion explicita en el cuerpo de la historia (ver "Politica de execution_mode al crear historias").
 6. Determinar que agentes especialistas hay que invocar leyendo las historias pendientes.
 7. Invocar un agente especialista por cada `agent_owner` distinto con historias ejecutables.
+8. Seguir lanzando, relanzando o sustituyendo especialistas mientras exista cualquier historia pendiente de `execution_mode: agent` o `hybrid`.
 
-El orquestador no ejecuta el trabajo de las historias; su trabajo termina cuando los especialistas estan en marcha.
+El orquestador no ejecuta el trabajo de las historias, pero no termina cuando los especialistas estan en marcha. Su obligacion es mantener cubierto con subagentes todo el trabajo pendiente ejecutable hasta que no quede nada mas que completar salvo bloqueos humanos reales.
 
 **Especialista**
 
@@ -165,6 +166,8 @@ agent_owner unico C → invocar especialista C
 ```
 
 Los especialistas A, B y C pueden ejecutarse en paralelo si no tienen dependencias entre sus historias.
+
+Este calculo debe repetirse durante toda la ejecucion. Si aparecen nuevas historias pendientes, cambia un `agent_owner`, un especialista termina o queda inactivo, el orquestador debe recalcular inmediatamente el conjunto de especialistas necesarios y lanzar de nuevo los subagentes que falten.
 
 ### Contexto minimo que debe recibir un especialista
 
@@ -216,8 +219,12 @@ Parar por cualquier otra razon — incertidumbre, falta de contexto, duda sobre 
 El orquestador tampoco termina al lanzar los especialistas. Permanece activo como fuente de contexto y guia hasta que el proyecto este completo:
 
 - Monitoriza periodicamente el estado de todas las historias.
+- Recalcula periodicamente que `agent_owner` siguen teniendo trabajo pendiente y verifica que cada uno tenga un subagente activo, relanzado o reasignado.
+- Si un subagente termina y todavia queda trabajo pendiente ejecutable por agentes, lanza el siguiente subagente necesario sin esperar a que lo pida un humano.
 - Cuando un especialista tiene dudas o esta bloqueado, lee su `agent_status_note` y responde actualizando esa nota o el cuerpo de la historia con el contexto necesario para desbloquear.
 - Si ningun especialista puede avanzar por causas que requieren intervencion humana real, el orquestador escala al humano con un resumen claro de que se necesita y por que.
+
+**Regla reforzada de no parada:** mientras exista cualquier historia pendiente de `execution_mode: agent` o `hybrid`, el orquestador esta obligado a seguir lanzando, relanzando o reasignando subagentes hasta que esa historia quede en `done` o bloqueada unicamente por una accion humana real.
 
 **El unico motivo legitimo para que el orquestador cierre la sesion** es que todas las historias de `execution_mode: agent` o `hybrid` esten en `done` o que las unicas pendientes sean de `execution_mode: human` esperando accion del humano.
 
@@ -252,6 +259,7 @@ Ante una alerta, el orquestador puede tomar las siguientes acciones segun el tip
 
 **Reasignar ownership:**
 - Si un especialista lleva demasiado tiempo sin actualizar su historia, el orquestador puede cambiar `agent_owner` a otro especialista con capacidades equivalentes y dejar trazabilidad del relevo en `agent_status_note`.
+- Si un especialista deja de estar en marcha y siguen existiendo historias pendientes bajo ese ownership, el orquestador debe relanzarlo o reasignar esas historias inmediatamente.
 
 **Replantear el plan:**
 - Si un bloqueo revela un problema de diseno en el desglose original, el orquestador puede crear nuevas historias, modificar dependencias existentes o reordenar prioridades para desatascar el flujo global.
@@ -263,6 +271,7 @@ Ante una alerta, el orquestador puede tomar las siguientes acciones segun el tip
 - No cambiar `agent_owner` sin dejar nota del relevo en `agent_status_note`.
 - No marcar una historia como `done` sin verificar que el trabajo esta realmente completo.
 - No eliminar dependencias (`blocked_by`) sin entender por que existian.
+- No dejar de lanzar subagentes mientras queden historias `agent` o `hybrid` pendientes.
 
 ## Bootstrap: registrar y conectar un proyecto nuevo
 
@@ -895,6 +904,8 @@ Cada subagente recibe como contexto minimo:
 
 El orquestador no espera a que un especialista termine antes de lanzar el siguiente. El paralelismo es el comportamiento esperado y correcto.
 
+Este lanzamiento no es puntual. Debe repetirse tantas veces como haga falta durante todo el ciclo de vida del proyecto. No relanzar subagentes cuando todavia existe trabajo ejecutable pendiente es una violacion del contrato.
+
 ### Señal de que la ejecucion ha terminado
 
 El orquestador puede cerrar la sesion cuando se cumplan simultaneamente:
@@ -925,9 +936,10 @@ Cualquier otra situacion — historias bloqueadas, especialistas con dudas, depe
 **Fase 3 — Monitorizacion continua:**
 
 8. Leer periodicamente el estado del proyecto para detectar bloqueos (ver "Monitorizacion y gestion de bloqueos").
-9. Ante cada alerta, tomar la accion correspondiente: aportar contexto, resolver dependencias, reasignar ownership o replantear el plan.
-10. Si se lanzan nuevos especialistas o se reasignan historias, verificar que el contexto que reciben es suficiente para operar.
-11. El orquestador permanece activo hasta que todas las historias del proyecto esten en `done`.
+9. Recalcular periodicamente si faltan especialistas por lanzar o relanzar mientras existan historias `agent` o `hybrid` pendientes.
+10. Ante cada alerta, tomar la accion correspondiente: aportar contexto, resolver dependencias, reasignar ownership o replantear el plan.
+11. Si se lanzan nuevos especialistas o se reasignan historias, verificar que el contexto que reciben es suficiente para operar.
+12. El orquestador permanece activo hasta que todas las historias del proyecto esten en `done` o las unicas pendientes requieran accion humana real.
 
 ## Contrato de actualización obligatoria durante la ejecución
 
@@ -1052,3 +1064,4 @@ docs/kanban/stories/
 - No detener la ejecucion por incertidumbre o falta de contexto sin haber consultado primero al orquestador via `agent_status_note`.
 - No considerar el trabajo terminado al completar una historia; el ciclo continua con las siguientes historias ejecutables.
 - No cerrar la sesion del orquestador mientras queden historias `agent` o `hybrid` sin `done`.
+- No omitir el relanzamiento de subagentes cuando existan historias pendientes asignables a especialistas.

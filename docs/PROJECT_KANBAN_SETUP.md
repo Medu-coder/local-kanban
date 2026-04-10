@@ -218,6 +218,7 @@ La autenticacion inicial se hara con email y password.
 10. Asignar `execution_mode: agent` por defecto a todas las historias que un agente pueda ejecutar de principio a fin. Usar `hybrid` si requiere participacion humana puntual. Reservar `human` solo para trabajo genuinamente imposible para un agente, con justificacion explicita en el cuerpo.
 11. **Obligatorio** actualizar `agent_status_note`, `last_agent_update`, subtareas y criterios manuales a medida que el trabajo avanza — no al final. Ver contrato completo en SKILL.md ("Contrato de actualizacion obligatoria durante la ejecucion").
 12. Los agentes iteran indefinidamente hasta completar todo el trabajo. Solo se detienen ante bloqueos que requieren intervencion humana real. Ver "Politica de iteracion continua" en SKILL.md.
-13. Consultar `KANBAN_ROOT/skills/local-kanban-agent/SKILL.md` para cualquier duda semantica o de politica operativa. Ese documento tiene precedencia sobre cualquier otro.
+13. El orquestador debe seguir lanzando o relanzando subagentes siempre que queden historias `agent` o `hybrid` pendientes. No es una pasada inicial unica: el ciclo continua hasta vaciar todo el trabajo ejecutable por agentes.
+14. Consultar `KANBAN_ROOT/skills/local-kanban-agent/SKILL.md` para cualquier duda semantica o de politica operativa. Ese documento tiene precedencia sobre cualquier otro.
 
 > El campo `rootPath` de la entrada en `config/projects.json` debe apuntar al directorio raiz del proyecto externo, no a `KANBAN_ROOT`.

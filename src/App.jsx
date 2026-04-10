@@ -42,6 +42,19 @@ function loadInitialDensity() {
   return DEFAULT_DENSITY;
 }
 
+function getCollapsibleLaneIds(project) {
+  if (!project) {
+    return [];
+  }
+
+  const epicLaneIds = project.epics
+    .filter((epic) => (epic.storyCount ?? 0) > 0)
+    .map((epic) => epic.id);
+  const hasNoEpicStories = project.stories.some((story) => !story.epicId);
+
+  return hasNoEpicStories ? [...epicLaneIds, "__no_epic__"] : epicLaneIds;
+}
+
 export default function App() {
   const MIN_LEFT_WIDTH = 220;
   const MAX_LEFT_WIDTH = 420;
@@ -631,6 +644,9 @@ export default function App() {
     sidePanelMode === "epic-manager" ||
     sidePanelMode === "epic-detail" ||
     Boolean(liveSelectedStory);
+  const collapsibleLaneIds = getCollapsibleLaneIds(visibleProject);
+  const canCollapseAllVisibleLanes =
+    workspaceView === "kanban" && collapsibleLaneIds.some((laneId) => !collapsedLanes[laneId]);
 
   return (
     <div
@@ -769,6 +785,17 @@ export default function App() {
                 });
               }}
               visibleCount={visibleProject?.stories.length ?? 0}
+              showCollapseAll={workspaceView === "kanban"}
+              canCollapseAll={canCollapseAllVisibleLanes}
+              onCollapseAll={() => {
+                setCollapsedLanes((current) => {
+                  const next = { ...current };
+                  for (const laneId of collapsibleLaneIds) {
+                    next[laneId] = true;
+                  }
+                  return next;
+                });
+              }}
               supplementalControls={
                 workspaceView === "graph" ? (
                   <div className="toolbar__mode-pill" data-testid="toolbar-graph-mode">

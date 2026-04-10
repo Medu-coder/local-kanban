@@ -9,6 +9,9 @@ export function Toolbar({
   onCreateStory,
   onManageEpics,
   visibleCount,
+  showCollapseAll,
+  canCollapseAll,
+  onCollapseAll,
   supplementalControls,
 }) {
   return (
@@ -80,10 +83,22 @@ export function Toolbar({
         <div className="toolbar__footer">
           <div className="toolbar__summary">
             <span className="count-pill">{visibleCount}</span>
-            <div>
+            <div className="toolbar__summary-copy">
               <strong>Historias visibles</strong>
               <p className="muted">Filtra por búsqueda y por épica activa.</p>
             </div>
+            {showCollapseAll ? (
+              <button
+                className="ghost-button toolbar__summary-action"
+                type="button"
+                data-sidepanel-action="true"
+                data-testid="collapse-all-lanes-button"
+                onClick={onCollapseAll}
+                disabled={!canCollapseAll}
+              >
+                Contraer todo
+              </button>
+            ) : null}
           </div>
 
           {supplementalControls ? <div className="toolbar__supplemental">{supplementalControls}</div> : null}

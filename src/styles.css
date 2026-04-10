@@ -802,13 +802,17 @@ pre {
 
 .toolbar__summary {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--space-3);
   align-items: center;
   padding: var(--surface-padding-sm) var(--surface-padding-md);
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.03);
+}
+
+.toolbar__summary-copy {
+  min-width: 0;
 }
 
 .toolbar__footer {
@@ -826,6 +830,18 @@ pre {
 .toolbar__summary strong,
 .toolbar__summary p {
   margin: 0;
+}
+
+.toolbar__summary-action {
+  min-height: calc(var(--control-height) - 8px);
+  padding-inline: 16px;
+  white-space: nowrap;
+}
+
+.toolbar__summary-action:disabled {
+  cursor: default;
+  opacity: 0.5;
+  transform: none;
 }
 
 .toolbar__mode-pill {
