@@ -77,6 +77,8 @@ export default function App() {
   const storyEditorSubmitRef = useRef(null);
   const epicEditorSubmitRef = useRef(null);
   const pendingEditorActionRef = useRef(null);
+  const refreshPromiseRef = useRef(null);
+  const refreshQueuedRef = useRef(false);
 
   useEffect(() => {
     window.localStorage.setItem(DENSITY_STORAGE_KEY, density);
@@ -203,12 +205,58 @@ export default function App() {
     });
   }, [visibleProject]);
 
-  async function refreshProjects() {
-    const payload = await fetchProjects();
-    startTransition(() => {
-      setData(payload);
-    });
+  async function refreshProjects(options = {}) {
+    const { suppressError = false } = options;
+
+    if (refreshPromiseRef.current) {
+      refreshQueuedRef.current = true;
+      return refreshPromiseRef.current;
+    }
+
+    const runRefresh = async () => {
+      do {
+        refreshQueuedRef.current = false;
+        const payload = await fetchProjects();
+        startTransition(() => {
+          setData(payload);
+        });
+      } while (refreshQueuedRef.current);
+    };
+
+    const promise = runRefresh()
+      .catch((refreshError) => {
+        if (suppressError) {
+          setError(refreshError.message);
+          return;
+        }
+
+        throw refreshError;
+      })
+      .finally(() => {
+        if (refreshPromiseRef.current === promise) {
+          refreshPromiseRef.current = null;
+        }
+      });
+
+    refreshPromiseRef.current = promise;
+    return promise;
   }
+
+  useEffect(() => {
+    const events = new EventSource("/api/events");
+
+    events.onmessage = (event) => {
+      if (event.data !== "refresh") {
+        return;
+      }
+
+      void refreshProjects({ suppressError: true });
+    };
+
+    return () => {
+      events.close();
+    };
+  }, []);
 
   async function handleSaveStory(payload) {
     if (!selectedProject) {

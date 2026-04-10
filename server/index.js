@@ -1,5 +1,6 @@
 import express from "express";
 import fs from "node:fs/promises";
+import { watch as fsWatch } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import { fileURLToPath } from "node:url";
@@ -555,6 +556,159 @@ async function writeEpicFile(projectConfig, epicId, frontmatter, body) {
   await fs.writeFile(filePath, content, "utf8");
   return filePath;
 }
+
+// ── SSE live-reload ──────────────────────────────────────────────────────────
+
+const sseClients = new Set();
+
+function sendSseEvent(res, data) {
+  res.write(`data: ${data}\n\n`);
+}
+
+function broadcastRefresh() {
+  for (const res of sseClients) {
+    sendSseEvent(res, "refresh");
+  }
+}
+
+let broadcastTimer = null;
+function scheduleBroadcast() {
+  clearTimeout(broadcastTimer);
+  broadcastTimer = setTimeout(broadcastRefresh, 250);
+}
+
+const activeWatchers = new Map();
+let syncWatchersTimer = null;
+
+function closeWatcher(watchedPath) {
+  const watcher = activeWatchers.get(watchedPath);
+  if (!watcher) {
+    return;
+  }
+
+  watcher.close();
+  activeWatchers.delete(watchedPath);
+}
+
+function watchPath(watchedPath, onChange) {
+  if (activeWatchers.has(watchedPath)) {
+    return;
+  }
+
+  try {
+    const watcher = fsWatch(watchedPath, { persistent: false }, onChange);
+    watcher.on("error", () => {
+      closeWatcher(watchedPath);
+    });
+    activeWatchers.set(watchedPath, watcher);
+  } catch {
+    // Path may not exist yet. The next sync will try again.
+  }
+}
+
+function scheduleWatchersSync() {
+  clearTimeout(syncWatchersTimer);
+  syncWatchersTimer = setTimeout(() => {
+    void syncWatchers();
+  }, 150);
+}
+
+function isConfigChange(filename) {
+  if (!filename) {
+    return true;
+  }
+
+  return path.basename(filename) === path.basename(configPath);
+}
+
+function isMarkdownChange(filename) {
+  if (!filename) {
+    return true;
+  }
+
+  return String(filename).endsWith(".md");
+}
+
+async function getWatchTargets() {
+  const targets = new Map();
+  const configDir = path.dirname(configPath);
+
+  targets.set(configDir, (_eventType, filename) => {
+    if (!isConfigChange(filename)) {
+      return;
+    }
+
+    scheduleWatchersSync();
+    scheduleBroadcast();
+  });
+
+  try {
+    const projects = await readJson(configPath);
+
+    for (const project of projects) {
+      if (!project?.rootPath) {
+        continue;
+      }
+
+      const docsRoot = path.join(project.rootPath, project.docsPath ?? "docs/kanban");
+
+      targets.set(docsRoot, (_eventType, filename) => {
+        if (filename === "epics" || filename === "stories" || !filename) {
+          scheduleWatchersSync();
+        }
+
+        if (isMarkdownChange(filename)) {
+          scheduleBroadcast();
+        }
+      });
+
+      targets.set(path.join(docsRoot, "epics"), (_eventType, filename) => {
+        if (isMarkdownChange(filename)) {
+          scheduleBroadcast();
+        }
+      });
+
+      targets.set(path.join(docsRoot, "stories"), (_eventType, filename) => {
+        if (isMarkdownChange(filename)) {
+          scheduleBroadcast();
+        }
+      });
+    }
+  } catch {
+    // Config unreadable. Keep only the config watcher and retry on the next change.
+  }
+
+  return targets;
+}
+
+async function syncWatchers() {
+  const targets = await getWatchTargets();
+
+  for (const watchedPath of activeWatchers.keys()) {
+    if (!targets.has(watchedPath)) {
+      closeWatcher(watchedPath);
+    }
+  }
+
+  for (const [watchedPath, onChange] of targets.entries()) {
+    watchPath(watchedPath, onChange);
+  }
+}
+
+void syncWatchers();
+
+app.get("/api/events", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  sendSseEvent(res, "connected");
+  sseClients.add(res);
+  req.on("close", () => sseClients.delete(res));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.get("/api/projects", async (_req, res) => {
   try {
