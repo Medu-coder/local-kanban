@@ -594,7 +594,7 @@ Ejemplos de violaciones frecuentes que el backend puede aceptar silenciosamente 
 | `agent_status_note` | no | string | nota breve | reflected by UI + agent-policy only | Estado operativo actual del trabajo agéntico | Siempre que un agente intervenga de verdad | agente | Debe ser breve, operativa y actual, no un changelog largo |
 | `last_agent_update` | no | ISO 8601 o `null` | timestamp | enforced by backend + reflected by UI + agent-policy only | Ultima intervencion real de un agente | Siempre que un agente cambie trabajo o estado real | agente | No actualizar por mera lectura o inspeccion |
 | `labels` | no | string[] | etiquetas libres | informational only | Taxonomia libre | Cuando ayude a clasificar | humano o agente | No derivar reglas de ejecucion de aqui |
-| `subtasks` | no | objeto[] | `{ title, done }` | enforced by backend + reflected by UI | Desglose operativo del trabajo | Cuando el trabajo necesite pasos concretos | humano o agente | Mantenerlas alineadas con el trabajo real |
+| `subtasks` | no | objeto[] | `{ title, done }` | enforced by backend + reflected by UI | Desglose operativo del trabajo | Cuando el trabajo necesite pasos concretos | humano o agente | **Obligatorio marcar cada subtarea como `done: true` en el momento en que se completa. No se puede mover la historia a `done` con subtareas sin completar.** |
 | `ready_criteria` | no | criterio[] | ver contrato de criterios | enforced by backend + reflected by UI | Condiciones para empezar | Cuando haga falta explicitar readiness | humano o agente | Si todos se cumplen y no hay bloqueos, la historia queda lista para `developing` |
 | `done_criteria` | no | criterio[] | ver contrato de criterios | enforced by backend + reflected by UI | Condiciones para validar cierre | Cuando haga falta explicitar cierre | humano o agente | `done` y `done validado` no son equivalentes |
 
@@ -638,6 +638,22 @@ Ejemplos de violaciones frecuentes que el backend puede aceptar silenciosamente 
 - `done_criteria`: declaran condiciones para validar cierre.
 
 Un agente no debe usar uno como sustituto de otro.
+
+### Obligatoriedad de completar subtareas
+
+**Cada subtarea debe marcarse `done: true` en el momento exacto en que se completa, no al final.** Completar el trabajo sin actualizar las subtareas es una violacion del contrato.
+
+Un agente no puede mover una historia a `done` si quedan subtareas con `done: false`. La historia con subtareas incompletas no esta terminada aunque el trabajo real parezca finalizado: las subtareas son la evidencia verificable del avance.
+
+Como marcar una subtarea completada:
+- Via API: `POST /api/projects/:projectId/stories/:storyId/subtasks/:subtaskIndex/toggle`
+- Via archivo: editar `done: true` en la subtarea correspondiente del frontmatter
+
+### Obligatoriedad de completar criterios manuales
+
+Los `done_criteria` de tipo `manual` deben marcarse `checked: true` uno a uno a medida que se verifican, no todos de golpe al final. Un criterio manual solo puede marcarse cuando el agente ha verificado de verdad la condicion que describe.
+
+**Una historia no puede considerarse `done validado` si tiene `done_criteria` sin completar.**
 
 ### Forma valida de criterio
 
@@ -829,6 +845,48 @@ El orquestador puede cerrar la sesion cuando se cumplan simultaneamente:
 10. Si se lanzan nuevos especialistas o se reasignan historias, verificar que el contexto que reciben es suficiente para operar.
 11. El orquestador permanece activo hasta que todas las historias del proyecto esten en `done`.
 
+## Contrato de actualización obligatoria durante la ejecución
+
+El especialista tiene la obligacion de mantener el frontmatter de cada historia sincronizado con el trabajo real en todo momento. Omitir una actualizacion no es una opcion: el kanban es la unica fuente de verdad sobre el estado del proyecto y otros agentes y el orquestador dependen de que los datos sean exactos.
+
+### Que actualizar y cuándo — tabla prescriptiva
+
+| Momento | Campo | Accion obligatoria |
+| --- | --- | --- |
+| Al tomar ownership | `agent_owner` | Confirmar o escribir la propia identidad |
+| Al tomar ownership | `status` | Cambiar a `developing` via API |
+| Al tomar ownership | `last_agent_update` | Escribir timestamp ISO 8601 actual |
+| Al tomar ownership | `agent_status_note` | Escribir nota breve del inicio ("Iniciando implementacion de X") |
+| Al completar cada subtarea | `subtasks[i].done` | Marcar `true` en el momento de completarla, no al final |
+| Al verificar cada criterio manual | `ready_criteria` / `done_criteria` | Marcar `checked: true` en el momento de verificarlo |
+| Ante cualquier bloqueo | `agent_status_note` | Describir el impedimento concreto |
+| Ante cualquier bloqueo | `last_agent_update` | Actualizar timestamp |
+| Al terminar el trabajo | `status` | Cambiar a `testing` via API |
+| Al terminar el trabajo | `last_agent_update` | Actualizar timestamp |
+| Al terminar el trabajo | `agent_status_note` | Escribir nota de cierre ("Trabajo completado, pendiente de validacion") |
+| Al validar y cerrar | `status` | Cambiar a `done` via API |
+| Al validar y cerrar | `last_agent_update` | Actualizar timestamp |
+| Al validar y cerrar | `agent_status_note` | Escribir nota de cierre final |
+
+### Reglas de sincronizacion
+
+- **Nunca avanzar `status` sin haber actualizado primero `last_agent_update` y `agent_status_note`.** Un cambio de estado sin nota ni timestamp es un dato a medias.
+- **Nunca marcar `status: done` con subtareas incompletas.** Todas las subtareas deben estar en `done: true`.
+- **Nunca marcar `status: done` con `done_criteria` manuales sin verificar.** Todos los criterios manuales deben estar en `checked: true`.
+- **`last_agent_update` debe reflejar el momento real de la ultima accion**, no el momento en que se escribio el `.md` por conveniencia. Si el agente no ha hecho nada nuevo, no debe actualizarlo.
+- **`agent_status_note` debe ser operativa y actual**, no un historial. Cada escritura sustituye a la anterior; debe describir el estado presente, no el pasado.
+
+### Frecuencia minima de actualizacion
+
+No existe un intervalo de tiempo fijo, pero el agente debe actualizar el frontmatter:
+- Al inicio de cada historia (toma de ownership)
+- Tras completar cada subtarea
+- Cada vez que el estado real cambia
+- Al detectar un bloqueo
+- Al terminar el trabajo de la historia
+
+Un agente que completa trabajo sin actualizar el frontmatter es invisible para el orquestador y para el resto del sistema.
+
 ## Flujo operativo del especialista
 
 1. Confirmar `KANBAN_ROOT`, ID del proyecto y propia identidad como `agent_owner`.
@@ -878,6 +936,12 @@ docs/kanban/stories/
 - No ejecutar `npm run setup` desde el directorio del proyecto externo; corre en `KANBAN_ROOT`.
 - No usar la UI como fuente de verdad.
 - No dejar el `.md` desactualizado respecto al trabajo real.
+- No marcar `status: done` con subtareas que tengan `done: false`; todas deben estar completadas antes.
+- No marcar `status: done` con `done_criteria` manuales sin verificar; todos deben estar en `checked: true`.
+- No dejar subtareas a medias al final de la historia: cada subtarea completada se marca en el momento en que se completa, no agrupadas al finalizar.
+- No cambiar `status` sin actualizar simultaneamente `last_agent_update` y `agent_status_note`.
+- No omitir `agent_status_note` durante la ejecucion; el orquestador y otros agentes dependen de esa nota para conocer el estado real.
+- No escribir `last_agent_update` por adelantado o por convenio; debe reflejar el momento real de la ultima accion.
 - No borrar dependencias o criterios sin motivo claro.
 - No reasignar `agent_owner` sin reflejar el relevo en `agent_status_note`.
 - No asumir que `done` implica `done validado`.
