@@ -511,6 +511,52 @@ Resumen de valores:
 | `hybrid` | Agente hace la mayor parte; humano interviene puntualmente | Casos con validacion o input humano necesario |
 | `human` | Trabajo imposible para un agente; justificacion obligatoria en el cuerpo | Excepcion rara y justificada |
 
+## Contrato estricto de valores permitidos
+
+**Usar un valor no listado aqui es una violacion del contrato, independientemente de que parezca semanticamente equivalente.**
+
+El backend puede normalizar o ignorar silenciosamente valores invalidos aplicando un default, lo que corrompe el dato sin emitir error visible. Un agente que use valores no listados introduce inconsistencias que se propagan sin traza.
+
+### Enums de historia — lista cerrada y exhaustiva
+
+| Campo | Valores permitidos. Solo estos. Ninguno mas. |
+| --- | --- |
+| `status` | `backlog` · `developing` · `testing` · `done` |
+| `priority` | `low` · `medium` · `high` |
+| `execution_mode` | `human` · `agent` · `hybrid` |
+| `story_type` | `feature` · `bug` · `tech_debt` · `research` · `chore` |
+| `type` | `story` |
+| `kind` (criterio) | `manual` · `derived` |
+
+### Enums de epica — lista cerrada y exhaustiva
+
+| Campo | Valores permitidos. Solo estos. Ninguno mas. |
+| --- | --- |
+| `type` | `epic` |
+
+### Campos con forma fija
+
+| Campo | Forma obligatoria |
+| --- | --- |
+| `id` (story) | Patron `STO-*`; estable tras creacion, nunca cambiar |
+| `id` (epic) | Patron `EPI-*`; estable tras creacion, nunca cambiar |
+| `project` | Debe coincidir EXACTAMENTE (case-sensitive) con el `id` en `config/projects.json` |
+| `last_agent_update` | ISO 8601 o `null`. No usar formatos de fecha libres ni strings arbitrarios |
+
+### Regla de cumplimiento
+
+Si un campo tiene un conjunto cerrado de valores, el agente debe usar uno de esos valores exactos. Si el valor correcto no figura en la lista, debe detenerse y consultar al humano antes de escribir. No existe excepcion a esta regla.
+
+Ejemplos de violaciones frecuentes que el backend puede aceptar silenciosamente y que **estan prohibidas**:
+
+| Valor escrito | Por que es incorrecto | Valor correcto |
+| --- | --- | --- |
+| `in_progress`, `in-progress`, `doing` | No es un status valido | `developing` |
+| `urgent`, `critical`, `p0` | No es una priority valida | `high` |
+| `autonomous`, `ai`, `bot` | No es un execution_mode valido | `agent` |
+| `task`, `improvement`, `spike` | No es un story_type valido | usar el mas aproximado de la lista |
+| `epic` en campo `type` de historia | Solo valido en epicas | `story` |
+
 ## Story Contract
 
 ### Invariantes globales de historia
@@ -523,6 +569,7 @@ Resumen de valores:
 - `blocks` y `related_to` nunca bloquean a la propia historia.
 - `status: done` no implica `done validado`.
 - `labels` no tienen semantica de ejecucion.
+- **Todo campo con valores enumerados acepta unica y exclusivamente los valores listados en "Contrato estricto de valores permitidos". Ningun otro valor es valido aunque parezca equivalente.**
 
 ### Campos de story
 
@@ -564,6 +611,7 @@ Resumen de valores:
 - La epica vive en `docs/kanban/epics/<EPIC_ID>.md` dentro del repositorio del proyecto.
 - El nombre del archivo debe coincidir con `id`.
 - La epica agrupa historias, pero no define permisos de ejecucion por si misma.
+- **Todo campo con valores enumerados acepta unica y exclusivamente los valores listados en "Contrato estricto de valores permitidos". Ningun otro valor es valido aunque parezca equivalente.**
 
 ### Campos de epic
 
@@ -843,3 +891,9 @@ docs/kanban/stories/
 - No omitir `executionMode` en el payload de API; el default es `"human"`.
 - No asignar `execution_mode: human` sin justificacion explicita en el cuerpo de la historia; `human` es una excepcion, no un default seguro.
 - No crear IDs de historia o epica sin seguir el patron `STO-*` / `EPI-*` a menos que haya razon explicita.
+- No usar valores de enum fuera de los listados en "Contrato estricto de valores permitidos"; el backend puede aceptarlos silenciosamente con un default, corrompiendo el dato sin error visible.
+- No inventar variantes de `status` (`in_progress`, `in-review`, `doing`...): solo `backlog`, `developing`, `testing`, `done`.
+- No inventar variantes de `priority` (`urgent`, `critical`, `p0`...): solo `low`, `medium`, `high`.
+- No inventar variantes de `execution_mode` (`autonomous`, `ai`, `bot`...): solo `human`, `agent`, `hybrid`.
+- No inventar variantes de `story_type` (`task`, `improvement`, `spike`...): solo `feature`, `bug`, `tech_debt`, `research`, `chore`.
+- No escribir `last_agent_update` con formatos de fecha distintos a ISO 8601 o `null`.
