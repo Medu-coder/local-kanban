@@ -1137,13 +1137,25 @@ app.put("/api/projects/:projectId/stories/:storyId", async (req, res) => {
   }
 });
 
+// Serve static files from the dist directory
+const distPath = path.join(rootDir, "dist");
+app.use(express.static(distPath));
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
+});
+
+// Fallback to index.html for SPA routing
+app.get("*", (req, res) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({ error: "API endpoint not found" });
+  }
+  res.sendFile(path.join(distPath, "index.html"));
 });
 
 const port = process.env.PORT || 4010;
 const host = process.env.HOST || "127.0.0.1";
 
 app.listen(port, host, () => {
-  console.log(`Local Kanban API listening on http://${host}:${port}`);
+  console.log(`\x1b[36m%s\x1b[0m`, `Local Kanban is running at http://${host}:${port}`);
 });
