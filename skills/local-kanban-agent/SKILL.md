@@ -32,28 +32,162 @@ El agente debe conocer esta ruta por contexto de tarea o por la ubicación de es
 
 ## 3. Referencia de Campos y API
 
-La API REST (`http://localhost:4010`) usa **camelCase**, mientras que el frontmatter usa **snake_case**.
+La API REST corre en `http://localhost:4010`. Todos los campos del body usan **camelCase**; el frontmatter del `.md` usa **snake_case**. Enviar snake_case al API no produce error: el campo simplemente se ignora y se aplica el default, corrompiendo silenciosamente los datos.
 
-| Campo API | Campo MD | Tipo | Valores Válidos (Lista Cerrada) | Default API | Regla Crítica |
+### 3.1 Mapa de campos
+
+| Campo API (camelCase) | Campo MD (snake_case) | Tipo | Valores válidos | Default si omitido | Regla crítica |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `id` | `id` | String | `STO-*` (Story) / `EPI-*` (Epic) | Auto | Estable tras creación. Nunca cambiar. |
-| `status` | `status` | Enum | `backlog`, `developing`, `testing`, `done` | `backlog` | No inventar estados (ej. *in-progress*). |
-| `priority` | `priority` | Enum | `low`, `medium`, `high` | `medium` | Informativo, no altera permisos. |
-| `executionMode`| `execution_mode`| Enum| `human`, `agent`, `hybrid` | **`human`** | **Obligatorio incluir `agent` para ejecución.** |
-| `agentOwner` | `agent_owner` | String | Identidad del agente o `null` | `null` | Requerido para ejecución agéntica. |
-| `storyType` | `story_type` | Enum | `feature`, `bug`, `tech_debt`, `research`, `chore` | `feature` | Clasificación de trabajo. |
-| `epicId` | `epic` | String | ID de la épica o `null` | `null` | Vínculo con épica. |
-| `blockedBy` | `blocked_by` | Array | IDs de historias bloqueantes | `[]` | Si no están en `done`, la historia está bloqueada. |
-| `subtasks` | `subtasks` | Obj[] | `{ title: String, done: Boolean }` | `[]` | Marcar `done: true` al completar cada una. |
-| `readyCriteria`| `ready_criteria`| Crit[] | Ver sección 5 | `[]` | Condición para entrar en `developing`. |
-| `doneCriteria` | `done_criteria` | Crit[] | Ver sección 5 | `[]` | Condición para validación de cierre. |
-| `agentStatusNote`| `agent_status_note`| String| Texto breve operativo | `""` | **Obligatorio actualizar en cada cambio.** |
-| `lastAgentUpdate`| `last_agent_update`| ISO8601| Timestamp o `null` | `null` | Actualizar tras acción real, no por lectura. |
+| `id` | `id` | String | `STO-*` / `EPI-*` | Auto (slug del título) | Estable tras creación. Nunca cambiar. |
+| `title` | `title` | String | Cualquiera | — | **Obligatorio** en creación. |
+| `status` | `status` | Enum | `backlog` `developing` `testing` `done` | `backlog` | No inventar estados como `in-progress`. |
+| `priority` | `priority` | Enum | `low` `medium` `high` | `medium` | — |
+| `executionMode` | `execution_mode` | Enum | `human` `agent` `hybrid` | **`human`** | **Debe ser `agent` para que el agente pueda ejecutar.** Si se omite, queda en `human`. |
+| `agentOwner` | `agent_owner` | String\|null | Identidad del agente o `null` | `null` | Requerido para ejecución agéntica. |
+| `storyType` | `story_type` | Enum | `feature` `bug` `tech_debt` `research` `chore` | `feature` | — |
+| `epicId` | `epic` | String\|null | ID de la épica o `null` | `null` | Vínculo con épica. |
+| `blockedBy` | `blocked_by` | String[] | IDs de historias bloqueantes | `[]` | Si alguna no está en `done`, la historia queda bloqueada. |
+| `blocks` | `blocks` | String[] | IDs de historias bloqueadas por esta | `[]` | — |
+| `relatedTo` | `related_to` | String[] | IDs relacionados | `[]` | — |
+| `contextFiles` | `context_files` | String[] | Rutas de archivos | `[]` | — |
+| `subtasks` | `subtasks` | `{title,done}[]` | Ver 3.3 | `[]` | Marcar `done:true` al completar. |
+| `readyCriteria` | `ready_criteria` | Criterion[] | Ver 3.3 | `[]` | Debe completarse para entrar en `developing`. |
+| `doneCriteria` | `done_criteria` | Criterion[] | Ver 3.3 | `[]` | Debe completarse para cerrar. |
+| `agentStatusNote` | `agent_status_note` | String | Texto breve operativo | `""` | **Actualizar en cada cambio de estado o hito.** |
+| `lastAgentUpdate` | `last_agent_update` | ISO8601\|null | Timestamp RFC 3339 | `null` | Actualizar solo tras acción real, no por lectura. |
+| `description` | `description` | String | Texto libre | `""` | — |
+| `body` | *(cuerpo MD)* | String | Markdown libre | `""` | Contenido tras el frontmatter. |
+| `assignee` | `assignee` | String\|null | Nombre/login | `null` | — |
+| `labels` | `labels` | String[] | Etiquetas libres | `[]` | — |
 
-**Prohibiciones API:**
-- No registrar proyectos vía API (editar `config/projects.json` manualmente).
-- No borrar historias/épicas vía API (borrar el `.md` si el humano autoriza).
-- No enviar campos en snake_case a la API (se ignorarán).
+### 3.2 Catálogo de endpoints
+
+Obtener `projectId` primero — está en `GET /api/projects` → campo `id` de cada proyecto.
+
+#### Lectura
+
+```
+GET  /api/projects
+     → Array de proyectos con sus épicas y historias ya enriquecidas.
+     Campos útiles: project.id, story.id, story.status, story.isReadyForDeveloping,
+                    story.isBlocked, story.readyCriteriaProgress, story.doneCriteriaProgress
+```
+
+#### Creación
+
+```
+POST /api/projects/:projectId/stories
+Body (JSON, camelCase):
+  { title*, epicId, status, priority, executionMode, agentOwner, storyType,
+    blockedBy, blocks, relatedTo, contextFiles, subtasks, readyCriteria,
+    doneCriteria, agentStatusNote, lastAgentUpdate, description, body,
+    assignee, labels, id }
+  * = obligatorio
+Respuesta 201: { ok: true, id: "STO-xxx", filePath: "..." }
+Respuesta 409: ya existe un .md con ese ID.
+
+POST /api/projects/:projectId/epics
+Body (JSON, camelCase):
+  { title*, description, labels, body, id }
+Respuesta 201: { ok: true, id: "EPI-xxx", filePath: "..." }
+```
+
+#### Actualización completa (REEMPLAZA todos los campos)
+
+```
+PUT  /api/projects/:projectId/stories/:storyId
+     ⚠️  REEMPLAZO TOTAL: cualquier campo omitido se resetea a su default.
+     Flujo obligatorio:
+       1. GET /api/projects → leer el objeto story actual completo.
+       2. Modificar solo los campos deseados.
+       3. Enviar el objeto completo con camelCase.
+Body: mismo esquema que POST /stories (todos los campos).
+Respuesta 200: { ok: true, id: "STO-xxx" }
+
+PUT  /api/projects/:projectId/epics/:epicId
+     ⚠️  REEMPLAZO TOTAL: mismo patrón que PUT stories.
+Body: { title*, description, labels, body }
+Respuesta 200: { ok: true, id: "EPI-xxx" }
+```
+
+#### Cambio de estado (solo actualiza `status`)
+
+```
+POST /api/projects/:projectId/stories/:storyId/status
+Body: { "status": "backlog"|"developing"|"testing"|"done" }
+     ✅  Seguro: no toca otros campos.
+     🚫  Bloqueado por el backend si status="developing" y la historia no está lista
+         (blocked_by pendientes o ready_criteria incompletos).
+Respuesta 200: { ok: true, status: "..." }
+Respuesta 500: { error: "...", detail: "La historia no esta lista para pasar a developing." }
+```
+
+#### Mover a otra épica (y/o cambiar estado)
+
+```
+POST /api/projects/:projectId/stories/:storyId/move
+Body: { "status": "..."*, "epicId": "EPI-xxx" }
+     * status es obligatorio. epicId es opcional.
+     ⚠️  Si epicId se omite o es null, el backend escribe epic: null en el MD
+         → la historia queda SIN épica. Incluir siempre epicId si no se quiere cambiar.
+     🚫  También valida la transición a "developing" igual que /status.
+Respuesta 200: { ok: true, status: "...", epicId: "..." }
+Respuesta 500: { error: "...", detail: "La historia no esta lista para pasar a developing." }
+```
+
+#### Toggle de subtarea (por índice 0-based)
+
+```
+POST /api/projects/:projectId/stories/:storyId/subtasks/:subtaskIndex/toggle
+     :subtaskIndex = posición en el array subtasks (0, 1, 2, ...)
+     Body: vacío o {}
+     ✅  Invierte done del subtask en esa posición.
+Respuesta 200: { ok: true, subtasks: [...], toggledSubtask: {...} }
+```
+
+#### Toggle de criterio (por índice 0-based)
+
+```
+POST /api/projects/:projectId/stories/:storyId/criteria/:criteriaType/:criteriaIndex/toggle
+     :criteriaType  = "ready" | "done"
+     :criteriaIndex = posición en el array (0, 1, 2, ...)
+     ⚠️  Solo funciona en criterios kind="manual". Los kind="derived" se calculan automáticamente.
+     Body: vacío o {}
+Respuesta 200: { ok: true, criteriaType, criteria: [...], toggledCriterion: {...} }
+Respuesta 400: "Solo se pueden editar criterios manuales."
+```
+
+### 3.3 Estructuras anidadas
+
+```jsonc
+// subtask
+{ "title": "Escribir tests", "done": false }
+
+// criterion manual
+{ "id": "criterion-tests-pasando", "label": "Tests pasando", "kind": "manual", "checked": false }
+
+// criterion derived (NO enviar checked — lo calcula el backend)
+{ "id": "criterion-deps", "label": "Dependencias cerradas", "kind": "derived",
+  "rule": "dependencies_done" }
+```
+
+Reglas `derived` válidas y su lógica exacta:
+
+| Regla | Se cumple cuando |
+| :--- | :--- |
+| `dependencies_done` | Todos los IDs en `blockedBy` tienen status `done` |
+| `all_subtasks_done` | Hay ≥1 subtarea Y todas tienen `done: true` |
+| `has_assignee` | `assignee` **o** `agentOwner` está relleno |
+| `has_agent_owner` | `agentOwner` está relleno (más estricto que `has_assignee`) |
+| `has_context_files` | Hay ≥1 entrada en `contextFiles` |
+| `story_in_testing` | `status === "testing"` |
+
+### 3.4 Prohibiciones API
+
+- No registrar proyectos vía API — editar `config/projects.json` manualmente (leer → modificar → escribir).
+- No borrar historias/épicas vía API — borrar el `.md` directamente si el humano lo autoriza.
+- No enviar campos en snake_case al body de la API — se ignorarán silenciosamente.
+- No omitir campos en `PUT` sin haber leído el estado actual primero.
 
 ## 4. Flujos Operativos
 
@@ -77,9 +211,8 @@ La API REST (`http://localhost:4010`) usa **camelCase**, mientras que el frontma
 ## 5. Validaciones, Transiciones y Criterios
 
 ### Marcación de Criterios (`ready_criteria` / `done_criteria`)
-- **`kind: manual`**: Se marcan con `checked: true` tras verificación real.
-- **`kind: derived`**: Se calculan por reglas. **Prohibición**: No marcarlos vía API/MD, actualizar el dato fuente.
-- **Reglas derived**: `dependencies_done`, `all_subtasks_done`, `has_agent_owner`, `has_context_files`, `story_in_testing`.
+- **`kind: manual`**: Se marcan con `checked: true` tras verificación real (endpoint toggle de criterio).
+- **`kind: derived`**: El backend los calcula automáticamente. **Prohibición**: No marcarlos vía API/MD — modificar el dato fuente (ej. para `all_subtasks_done`, completar las subtareas). Ver tabla de reglas en sección 3.3.
 
 ### Transiciones Estrictas
 - **A `developing`**: El backend bloquea si hay `blocked_by` pendientes o `ready_criteria` incompletos.
@@ -97,4 +230,4 @@ La API REST (`http://localhost:4010`) usa **camelCase**, mientras que el frontma
 | `hybrid` | Presente | Cooperación humano-agente. Ejecutar parte técnica. |
 
 ---
-**Nota Final**: Este contrato es estricto. El backend puede aplicar defaults silenciosos ante datos inválidos, corrompiendo el Kanban. Ante la duda, consultar al Orquestador vía `agent_status_note`.
+**Nota Final**: Ante bloqueos o ambigüedad, dejar constancia en `agent_status_note` y consultar al Orquestador antes de operar.
