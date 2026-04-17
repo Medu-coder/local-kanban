@@ -27,8 +27,8 @@ Local Kanban separa la aplicación (`KANBAN_ROOT`) de los proyectos externos (`T
 El agente debe conocer esta ruta por contexto de tarea o por la ubicación de este archivo. **Prohibición**: Si no se conoce la ruta, pedirla al usuario antes de operar. Nunca asumir que es igual al directorio de trabajo (`CWD`).
 
 ### Roles
-- **Orquestador**: Registra proyectos, crea épicas e historias, asigna `agent_owner` y lanza especialistas en paralelo. No cierra sesión mientras haya historias `agent/hybrid` pendientes no bloqueadas por humanos.
-- **Especialista**: Filtra historias por su identidad (`agent_owner`), las ejecuta y actualiza el frontmatter continuamente. Solo para ante bloqueos humanos reales o fin de trabajo propio.
+- **Orquestador**: Registra proyectos, crea épicas e historias, asigna `agent_owner`, prepara contexto y lanza especialistas en paralelo. Su función es coordinar; **no ejecuta historias ni hace trabajo técnico delegado a especialistas salvo que el usuario se lo ordene explícitamente para una historia concreta**. No cierra sesión mientras haya historias `agent/hybrid` pendientes no bloqueadas por humanos.
+- **Especialista**: Recibe una historia concreta con contexto acotado, la ejecuta end to end, actualiza el frontmatter continuamente y la deja cerrada con reporte final o bloqueada con causa explícita. Solo para ante bloqueos humanos reales o fin de trabajo propio.
 
 ## 3. Referencia de Campos y API
 
@@ -196,17 +196,29 @@ Reglas `derived` válidas y su lógica exacta:
    **Estructura entry**: `{ "id": "slug", "name": "Nombre", "rootPath": "/ruta/abs", "docsPath": "docs/kanban" }`.
    *Nota: `id` debe coincidir con campo `project` en MD.*
 2. **Planificación**: Crear épicas e historias maximizando `execution_mode: agent`. Justificar `human` en el cuerpo.
-3. **Lanzamiento**: Invocar subagentes en paralelo (un ejemplar por `agent_owner` único con trabajo pendiente).
-4. **Monitorización**: Resolver bloqueos, aportar contexto en `agent_status_note` y relanzar agentes si es necesario.
+3. **Preparación de contexto**: Antes de cada lanzamiento, entregar al especialista solo el contexto imprescindible para completar correctamente su historia:
+   - ID de la historia y objetivo esperado.
+   - Criterios de listo/cierre y estado de dependencias.
+   - Archivos o rutas relevantes (`context_files`) y restricciones técnicas del repo.
+   - Resultado esperado de validación o evidencia de cierre.
+   - Bloqueos conocidos, decisiones previas y límites de actuación.
+   **Prohibición**: No volcar contexto masivo "por si acaso". El contexto debe ser suficiente y a la vez mínimo.
+4. **Lanzamiento**: Invocar subagentes en paralelo (un ejemplar por `agent_owner` único con trabajo pendiente), dejando claro ownership, alcance, definición de terminado y formato de reporte.
+5. **Monitorización**: Seguir el progreso, resolver bloqueos, aportar contexto adicional solo cuando haga falta, actualizar `agent_status_note` si coordina cambios y relanzar agentes si es necesario.
+6. **Límite operativo**: Si el orquestador detecta trabajo técnico pendiente en una historia ejecutable por especialista, debe delegarlo. No debe absorberlo él mismo por conveniencia.
 
 ### Especialista (Ejecución Atómica)
-1. **Filtro**: Identificar historias propias (`agent_owner` == identidad) no terminadas.
+1. **Entrada acotada**: Trabajar únicamente sobre las historias asignadas a su identidad (`agent_owner` == identidad) y el contexto entregado por el orquestador. Si falta contexto crítico, pedirlo de forma concreta. Si sobra contexto irrelevante, ignorarlo.
 2. **Readiness**: Verificar que `blocked_by` estén en `done` y `ready_criteria` cumplidos.
-3. **Ejecución**:
+3. **Ejecución end to end**:
    - Mover a `developing` vía API.
    - Sincronizar: Marcar cada subtarea `done: true` **al completarla**.
    - Actualizar `agent_status_note` y `last_agent_update` en cada cambio de estado o hito.
 4. **Cierre**: Mover a `testing` y finalmente a `done` tras validación E2E. Releer el proyecto tras cada `done` por si se desbloqueó trabajo propio.
+5. **Reporte obligatorio**: Cada historia debe quedar en uno de estos estados finales:
+   - `done`, con validación ejecutada y nota breve de lo realizado.
+   - bloqueada, con causa concreta, evidencia del bloqueo, siguiente acción necesaria y aclaración de por qué no puede resolverse respetando este contrato.
+   **Prohibición**: No devolver trabajo a medias, no parar por ambigüedad menor y no cerrar la sesión sin dejar trazabilidad suficiente para que el orquestador actúe.
 
 ## 5. Validaciones, Transiciones y Criterios
 

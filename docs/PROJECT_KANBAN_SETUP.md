@@ -79,6 +79,8 @@ Importacion de reglas:
 - Si este archivo entra en conflicto con esa skill, prevalece la skill de Local Kanban.
 - Ningun agente puede empezar trabajo tecnico, crear historias, mover estados ni cerrar tareas sin cumplir antes ese contrato.
 - Mantener el Kanban actualizado durante la ejecucion real del trabajo es obligatorio, no opcional.
+- El orquestador solo orquesta: reparte trabajo, lanza especialistas, monitoriza y resuelve bloqueos. No ejecuta historias delegables por especialistas salvo orden explicita del usuario.
+- Cada especialista recibe contexto suficiente pero minimo, ejecuta su historia end to end y la deja cerrada o bloqueada con causa concreta y siguiente accion necesaria.
 ```
 
 Sustituye `KANBAN_ROOT` por la ruta absoluta real del repositorio `Local Kanban` si el agente ya la conoce. Tambien puedes partir de [AGENTS_WORK_CONTRACT_TEMPLATE.md](AGENTS_WORK_CONTRACT_TEMPLATE.md).
@@ -219,6 +221,9 @@ La autenticacion inicial se hara con email y password.
 11. **Obligatorio** actualizar `agent_status_note`, `last_agent_update`, subtareas y criterios manuales a medida que el trabajo avanza — no al final. Ver contrato completo en SKILL.md ("Contrato de actualizacion obligatoria durante la ejecucion").
 12. Los agentes iteran indefinidamente hasta completar todo el trabajo. Solo se detienen ante bloqueos que requieren intervencion humana real. Ver "Politica de iteracion continua" en SKILL.md.
 13. El orquestador debe seguir lanzando o relanzando subagentes siempre que queden historias `agent` o `hybrid` pendientes. No es una pasada inicial unica: el ciclo continua hasta vaciar todo el trabajo ejecutable por agentes.
-14. Consultar `KANBAN_ROOT/skills/local-kanban-agent/SKILL.md` para cualquier duda semantica o de politica operativa. Ese documento tiene precedencia sobre cualquier otro.
+14. El orquestador no sustituye al especialista: no debe ponerse a implementar historias asignables. Su responsabilidad es delegar con contexto preciso, vigilar avance y desbloquear.
+15. El contexto que el orquestador entrega a cada especialista debe ser el minimo suficiente: historia objetivo, dependencias, criterios, archivos relevantes, restricciones y evidencia esperada. No se debe inyectar contexto sobrante.
+16. Cada especialista debe cerrar su historia end to end, incluyendo validacion real y reporte final. Si no puede, debe dejar por escrito el motivo concreto del bloqueo, la evidencia disponible y la accion externa necesaria.
+17. Consultar `KANBAN_ROOT/skills/local-kanban-agent/SKILL.md` para cualquier duda semantica o de politica operativa. Ese documento tiene precedencia sobre cualquier otro.
 
 > El campo `rootPath` de la entrada en `config/projects.json` debe apuntar al directorio raiz del proyecto externo, no a `KANBAN_ROOT`.
