@@ -843,14 +843,40 @@ async function getProjectConfig(projectId) {
 
 // ── SSE live-reload ──────────────────────────────────────────────────────────
 
+const MAX_SSE_CLIENTS = 32;
 const sseClients = new Set();
 
+function cleanupSseClient(res) {
+  sseClients.delete(res);
+  if (!res.writableEnded && !res.destroyed) {
+    res.end();
+  }
+}
+
+function writeSse(res, payload) {
+  if (res.writableEnded || res.destroyed) {
+    cleanupSseClient(res);
+    return false;
+  }
+
+  try {
+    if (!res.write(payload)) {
+      cleanupSseClient(res);
+      return false;
+    }
+    return true;
+  } catch {
+    cleanupSseClient(res);
+    return false;
+  }
+}
+
 function sendSseEvent(res, data) {
-  res.write(`data: ${data}\n\n`);
+  return writeSse(res, `data: ${data}\n\n`);
 }
 
 function sendSseHeartbeat(res) {
-  res.write(": heartbeat\n\n");
+  return writeSse(res, ": heartbeat\n\n");
 }
 
 function broadcastRefresh() {
@@ -986,15 +1012,24 @@ async function syncWatchers() {
 void syncWatchers();
 
 app.get("/api/events", (req, res) => {
+  if (sseClients.size >= MAX_SSE_CLIENTS) {
+    return res.status(503).json({
+      ok: false,
+      code: "sse_capacity_reached",
+      error: "El canal de sincronización ha alcanzado su capacidad local.",
+      nextAction: "Cierra otra pestaña de Local Kanban y vuelve a intentarlo.",
+    });
+  }
+
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
   });
-  sendSseEvent(res, "connected");
   sseClients.add(res);
-  req.on("close", () => sseClients.delete(res));
+  req.once("close", () => cleanupSseClient(res));
+  sendSseEvent(res, "connected");
 });
 
 const sseHeartbeatTimer = setInterval(() => {
@@ -1689,10 +1724,9 @@ function shutdown(signal) {
   for (const watchedPath of [...activeWatchers.keys()]) {
     closeWatcher(watchedPath);
   }
-  for (const res of sseClients) {
-    res.end();
+  for (const res of [...sseClients]) {
+    cleanupSseClient(res);
   }
-  sseClients.clear();
 
   const forceExitTimer = setTimeout(() => process.exit(1), 10_000);
   forceExitTimer.unref();
