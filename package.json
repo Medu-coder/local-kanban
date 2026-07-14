@@ -24,6 +24,7 @@
     "local-kanban": "node bin/local-kanban.js",
     "skill:install": "node scripts/manage-skill.js install",
     "skill:verify": "node scripts/manage-skill.js verify",
+    "check": "node scripts/check-static.js",
     "test:unit": "node --test test/*.test.js",
     "test:skill": "node --test test/skill-management.test.js",
     "test:e2e": "playwright test",
@@ -42,9 +43,9 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^9.1.2",
-    "pm2": "^5.4.3",
-    "vite": "^5.4.11"
+    "pm2": "^7.0.3",
+    "vite": "^8.1.4"
   }
 }
