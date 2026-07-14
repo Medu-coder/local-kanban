@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-revision: 15
+revision: 16
 id: STO-PRODUCTION-CLEANUP
 type: story
 project: kanban-local
@@ -77,7 +77,7 @@ subtasks:
   - id: revisar-y-commitear-cambios
     title: Revisar y commitear cambios
     done: true
-updated_at: '2026-07-14T11:47:26.327Z'
+updated_at: '2026-07-14T11:48:50.020Z'
 evidence:
   - id: evidence-4368fb90-c954-478d-a2fc-c2d8a2110ef8
     type: test
@@ -99,5 +99,29 @@ evidence:
     summary: Gate completo de producción superado
     recorded_at: '2026-07-14T11:47:26.311Z'
     actor: codex-root
+  - id: evidence-ca9cf7d3-fc84-4e0d-aa50-6a17bd4b99be
+    type: review
+    story_id: STO-PRODUCTION-CLEANUP
+    attempt_id: 33f57d90-feb8-465d-a134-6463a61f7e8d
+    commit: 145cc4be12dfd6ce4e44563815f1ec6281319fe3
+    command: 'npm run release:verify'
+    exit_code: 0
+    summary: >-
+      Revisión independiente high-risk: diff de producción inspeccionado,
+      worktree limpio y gates release/doctor ejecutados sin cambios
+    recorded_at: '2026-07-14T11:48:50.020Z'
+    actor: codex-independent-reviewer
+  - id: evidence-205538c5-9121-46e7-8bb0-69548152a1d3
+    type: review
+    story_id: STO-PRODUCTION-CLEANUP
+    attempt_id: 33f57d90-feb8-465d-a134-6463a61f7e8d
+    commit: 145cc4be12dfd6ce4e44563815f1ec6281319fe3
+    command: local-kanban doctor --json
+    exit_code: 0
+    summary: >-
+      Revisión independiente high-risk: diff de producción inspeccionado,
+      worktree limpio y gates release/doctor ejecutados sin cambios
+    recorded_at: '2026-07-14T11:48:50.020Z'
+    actor: codex-independent-reviewer
 ---
 
