@@ -80,7 +80,22 @@ export function StoryDetail({
   onToggleCriterion,
   isUpdatingSubtask,
   isUpdatingCriterion,
+  onOperationalChange,
 }) {
+  const [timeline, setTimeline] = useState(null);
+  const [operationalError, setOperationalError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setTimeline(null);
+    if (story) {
+      fetchStoryTimeline(story.projectId, story.id)
+        .then((result) => { if (active) setTimeline(result); })
+        .catch((error) => { if (active) setOperationalError(error.message); });
+    }
+    return () => { active = false; };
+  }, [story?.id, story?.projectId, story?.revision]);
+
   if (!story) {
     return null;
   }
@@ -164,15 +179,62 @@ export function StoryDetail({
           {story.coordination.blocks?.length ? (
             <ul className="subtask-list">
               {story.coordination.blocks.map((block) => (
-                <li key={block.id}><strong>{block.type}</strong>: {block.action} ({block.owner})</li>
+                <li key={block.id}>
+                  <strong>{block.type}</strong>: {block.action} ({block.owner})
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        setOperationalError("");
+                        await resolveStoryBlock(story.projectId, story.id, block.id, {
+                          attemptId: story.coordination.attempt.id,
+                          fencingToken: story.coordination.claim.fencingToken,
+                        });
+                        await onOperationalChange?.();
+                      } catch (error) { setOperationalError(error.message); }
+                    }}
+                  >Resolver</button>
+                </li>
               ))}
             </ul>
           ) : null}
           {story.coordination.checkpoint ? (
             <p className="detail-copy"><strong>Checkpoint:</strong> {story.coordination.checkpoint.summary}</p>
           ) : null}
+          {story.coordination.claim ? (
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={async () => {
+                try {
+                  setOperationalError("");
+                  await releaseStoryClaim(story.projectId, story.id, {
+                    attemptId: story.coordination.attempt.id,
+                    fencingToken: story.coordination.claim.fencingToken,
+                    outcome: "abandoned",
+                  });
+                  await onOperationalChange?.();
+                } catch (error) { setOperationalError(error.message); }
+              }}
+            >Liberar claim</button>
+          ) : null}
+          {operationalError ? <p className="error-banner">{operationalError}</p> : null}
         </section>
       ) : null}
+
+      <section className="detail-section" data-testid="story-timeline">
+        <h3>Timeline</h3>
+        {timeline?.events?.length ? (
+          <ol className="subtask-list">
+            {timeline.events.map((event) => (
+              <li key={event.id}>
+                <strong>{event.eventType}</strong> · {event.actor} · {new Date(event.createdAt).toLocaleString()}
+              </li>
+            ))}
+          </ol>
+        ) : <p className="muted">Sin eventos operativos.</p>}
+      </section>
 
       {story.quarantine ? (
         <section className="detail-section" data-testid="story-quarantine">
@@ -261,3 +323,5 @@ export function StoryDetail({
     </aside>
   );
 }
+import { useEffect, useState } from "react";
+import { fetchStoryTimeline, releaseStoryClaim, resolveStoryBlock } from "../lib/api";

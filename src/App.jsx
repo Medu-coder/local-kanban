@@ -1082,6 +1082,7 @@ export default function App() {
                   onToggleCriterion={handleToggleCriterion}
                   isUpdatingSubtask={isUpdatingSubtask}
                   isUpdatingCriterion={isUpdatingCriterion}
+                  onOperationalChange={() => refreshProjects({ suppressError: true })}
                 />
               )}
             </>

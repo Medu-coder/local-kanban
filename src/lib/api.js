@@ -144,3 +144,26 @@ export async function saveEpic(projectId, epicId, payload, metadata = {}) {
 
   return handleJson(response, "No se pudo guardar la epica.");
 }
+
+export async function fetchStoryTimeline(projectId, storyId) {
+  const response = await fetch(`/api/projects/${projectId}/stories/${storyId}/timeline`);
+  return handleJson(response, "No se pudo cargar el timeline.");
+}
+
+export async function releaseStoryClaim(projectId, storyId, payload) {
+  const response = await fetch(`/api/projects/${projectId}/stories/${storyId}/coordination/release`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleJson(response, "No se pudo liberar el claim.");
+}
+
+export async function resolveStoryBlock(projectId, storyId, blockId, payload) {
+  const response = await fetch(`/api/projects/${projectId}/stories/${storyId}/blocks/${blockId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleJson(response, "No se pudo resolver el bloqueo.");
+}
