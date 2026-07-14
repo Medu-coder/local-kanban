@@ -79,7 +79,10 @@ En desarrollo, `npm run dev` levanta Vite y Express. En producción local, el bu
 genera durante la preparación del release; `npm run start` comprueba que existe y PM2
 ejecuta una instancia de `server/index.js` según `ecosystem.config.cjs`.
 
-La primera versión soportada es macOS con Node.js 22.13 o superior. No depende de servicios cloud, colas externas ni proveedores de identidad.
+La plataforma soportada es macOS con Node.js 22.13+ o Node.js 24 LTS. Node 24 es la rama
+recomendada para nuevas instalaciones; las ramas Current quedan fuera del contrato hasta
+incorporarse a la matriz de CI. No depende de servicios cloud, colas externas ni proveedores
+de identidad.
 
 ## Verificación
 

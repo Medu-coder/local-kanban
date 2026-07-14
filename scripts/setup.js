@@ -44,7 +44,8 @@ function parseNodeVersion(version) {
 
 function supportsRequiredNodeVersion(version) {
   const [major = 0, minor = 0, patch = 0] = parseNodeVersion(version);
-  return major > 22 || (major === 22 && (minor > 13 || (minor === 13 && patch >= 0)));
+  return major === 24 ||
+    (major === 22 && (minor > 13 || (minor === 13 && patch >= 0)));
 }
 
 function slugify(value) {
@@ -210,7 +211,7 @@ async function runGuidedConfiguration(configStatus) {
 
 async function main() {
   if (!supportsRequiredNodeVersion(process.version)) {
-    console.error("Local Kanban requiere Node.js 22.13.0 o superior.");
+    console.error("Local Kanban requiere Node.js 22.13+ o Node.js 24 LTS.");
     process.exit(1);
   }
 

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": "^22.13.0 || ^24.0.0"
   },
   "bin": {
     "local-kanban": "bin/local-kanban.js"
@@ -53,5 +53,9 @@
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^9.1.2",
     "vite": "^8.1.4"
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "fsevents@2.3.2": true
   }
 }

@@ -12,7 +12,8 @@ Metodología local para planificar, coordinar y verificar proyectos largos desar
 
 ## Instalación local
 
-Requisitos: macOS, Node.js 22.13 o superior y npm.
+Requisitos: macOS, Node.js 22.13+ o Node.js 24 LTS y npm. Para una instalación nueva se
+recomienda la rama LTS 24; las ramas Current no se consideran soportadas hasta incorporarse a CI.
 
 ```bash
 cd /ruta/al/checkout/local-kanban

@@ -5,7 +5,7 @@ Esta es la referencia operativa para verificar Local Kanban. La fuente ejecutabl
 
 ## Gate completo
 
-Desde un checkout limpio, con Node.js 22.13 o superior:
+Desde un checkout limpio, con Node.js 22.13+ o Node.js 24 LTS:
 
 ```bash
 npm ci

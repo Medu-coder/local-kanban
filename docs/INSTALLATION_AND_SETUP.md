@@ -5,7 +5,7 @@ Esta guía instala Local Kanban en un Mac, enlaza su skill canónica con Codex y
 ## Requisitos
 
 - macOS.
-- Node.js 22.13 o superior.
+- Node.js 22.13+ o Node.js 24 LTS; se recomienda Node 24 para instalaciones nuevas.
 - npm.
 - Codex con soporte de skills personales en `~/.agents/skills`.
 - Uno o más repositorios Git locales que vayan a usar la metodología.
@@ -14,6 +14,9 @@ Esta guía instala Local Kanban en un Mac, enlaza su skill canónica con Codex y
 node --version
 npm --version
 ```
+
+No uses una rama `Current` en producción hasta que figure en la matriz de CI. Con Homebrew,
+la actualización recomendada es `brew update && brew upgrade node@24`.
 
 ## 1. Instalar Local Kanban
 

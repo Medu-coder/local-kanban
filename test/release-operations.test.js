@@ -43,9 +43,19 @@ test("setup y manifiesto exigen la misma version minima de Node", async () => {
   const pkg = JSON.parse(await fs.readFile(path.join(rootDir, "package.json"), "utf8"));
   const setup = await fs.readFile(path.join(rootDir, "scripts", "setup.js"), "utf8");
 
-  assert.equal(pkg.engines.node, ">=22.13.0");
-  assert.match(setup, /Node\.js 22\.13\.0 o superior/u);
+  assert.equal(pkg.engines.node, "^22.13.0 || ^24.0.0");
+  assert.match(setup, /major === 24/u);
+  assert.match(setup, /Node\.js 22\.13\+ o Node\.js 24 LTS/u);
   assert.doesNotMatch(setup, /Node\.js 18/u);
+});
+
+test("npm solo autoriza los scripts nativos revisados y fijados", async () => {
+  const pkg = JSON.parse(await fs.readFile(path.join(rootDir, "package.json"), "utf8"));
+
+  assert.deepEqual(pkg.allowScripts, {
+    "fsevents@2.3.3": true,
+    "fsevents@2.3.2": true,
+  });
 });
 
 test("los launchers fallan de forma segura y esperan el health endpoint con limite", async () => {
