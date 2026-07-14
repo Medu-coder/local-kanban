@@ -40,6 +40,18 @@ La suite E2E crea `.e2e/` desde `e2e/fixtures/source-project`; nunca opera sobre
 reales registrados por el usuario. Los documentos de ese directorio son fixtures, no
 documentación de producto ni planificación activa.
 
+## Aislamiento obligatorio del dogfooding
+
+El checkout proveedor de Local Kanban no puede ser simultáneamente proveedor y consumidor.
+Está prohibido usar la aplicación para gestionar su propio desarrollo sobre ese checkout:
+no se ejecuta `local-kanban init`, no se registra como proyecto consumidor y no se crean en
+él `docs/kanban` ni `.local-kanban/runtime.sqlite` para representar este repositorio.
+
+El dogfooding y las pruebas de integración solo pueden operar sobre copias, fixtures o
+proyectos temporales descartables. Cada ejecución debe usar un `KANBAN_CONFIG_PATH` dentro
+del entorno temporal y un `HOME` aislado, sin leer ni modificar la configuración, los
+proyectos o el runtime reales del usuario. El entorno se elimina al terminar la prueba.
+
 ## Comandos parciales
 
 Para iterar localmente puede ejecutarse una capa concreta:

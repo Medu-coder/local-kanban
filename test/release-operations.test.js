@@ -123,3 +123,21 @@ test("la documentación distingue runtime, estados y fixtures de prueba", async 
   assert.match(testing, /fixtures, no\s+documentación de producto/u);
   assert.match(testing, /Node\.js 22 y 24/u);
 });
+
+test("el contrato prohíbe autogestionar el checkout proveedor", async () => {
+  const skill = await fs.readFile(
+    path.join(rootDir, "skills", "local-kanban", "SKILL.md"),
+    "utf8",
+  );
+  const testing = await fs.readFile(path.join(rootDir, "docs", "TESTING.md"), "utf8");
+
+  for (const contract of [skill, testing]) {
+    assert.match(contract, /no puede ser simultáneamente proveedor y consumidor/u);
+    assert.match(contract, /local-kanban init/u);
+    assert.match(contract, /docs\/kanban/u);
+    assert.match(contract, /\.local-kanban\/runtime\.sqlite/u);
+    assert.match(contract, /KANBAN_CONFIG_PATH/u);
+    assert.match(contract, /`HOME` aislado/u);
+    assert.match(contract, /temporales descartables/u);
+  }
+});

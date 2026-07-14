@@ -18,6 +18,7 @@ Coordinar trabajo de desarrollo agéntico manteniendo el Kanban como contrato op
 7. Mantener trazabilidad suficiente para reanudar sin consultar el chat anterior.
 8. Reservar la edición manual de Markdown para recuperación o mantenimiento excepcional; reconciliarla antes de continuar.
 9. No tolerar degradaciones silenciosas: todo warning o fallo debe conservar causa, impacto, acción, comando y verificación. Un `fail` bloquea ejecución; un warning declara qué garantía se reduce.
+10. El checkout proveedor de Local Kanban no puede ser simultáneamente proveedor y consumidor: no usar Local Kanban para gestionar su propio desarrollo, no ejecutar `local-kanban init` sobre ese checkout, no registrarlo como proyecto consumidor y no crear en él `docs/kanban` ni `.local-kanban/runtime.sqlite` para ese fin. El dogfooding solo puede ejecutarse sobre copias, fixtures o proyectos temporales descartables, con `KANBAN_CONFIG_PATH` y `HOME` aislados del usuario y del checkout proveedor.
 
 Antes de operar, ejecutar `local-kanban --help` y usar únicamente los subcomandos que anuncie la versión instalada. Si la CLI no está disponible, resolver la fuente de esta skill con `realpath ~/.agents/skills/local-kanban`, ejecutar `npm link` desde la raíz de ese checkout y repetir el preflight. Si la reparación falla, detener la mutación y reportar el problema. No sustituirla por edición directa de Markdown, SQLite o llamadas HTTP improvisadas.
 
