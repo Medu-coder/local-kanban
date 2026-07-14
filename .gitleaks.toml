@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Idempotency fixture used by the canonical UI transition test"
+  condition = "AND"
+  regexTarget = "line"
+  regexes = ['''idempotencyKey:\s*"associate-before-claim-1"''']
+  paths = ['''^e2e/tests/canonical-transition\.spec\.js$''']

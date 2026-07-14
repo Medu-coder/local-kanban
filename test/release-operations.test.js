@@ -64,6 +64,39 @@ test("el gate de release usa el smoke hermetico sin flags ignorados", async () =
 
   assert.match(pkg.scripts["test:skill"], /skill:smoke:isolated/u);
   assert.match(pkg.scripts["release:verify"], /npm run test:skill/u);
+  assert.match(pkg.scripts["release:verify"], /npm run test:coverage/u);
+  assert.doesNotMatch(pkg.scripts["release:verify"], /npm run test:unit/u);
+  assert.doesNotMatch(pkg.scripts["release:verify"], /npm run test:quality/u);
   assert.match(pkg.scripts["release:verify"], /npm audit --audit-level=high/u);
   assert.doesNotMatch(pkg.scripts["release:verify"], /--local/u);
+});
+
+test("coverage aplica los umbrales de release acordados", async () => {
+  const pkg = JSON.parse(await fs.readFile(path.join(rootDir, "package.json"), "utf8"));
+  const coverage = pkg.scripts["test:coverage"];
+
+  assert.match(coverage, /--experimental-test-coverage/u);
+  assert.match(coverage, /--test-coverage-lines=85/u);
+  assert.match(coverage, /--test-coverage-branches=65/u);
+  assert.match(coverage, /--test-coverage-functions=90/u);
+  assert.match(coverage, /test\/\*\.test\.js/u);
+});
+
+test("la documentación distingue runtime, estados y fixtures de prueba", async () => {
+  const architecture = await fs.readFile(
+    path.join(rootDir, "docs", "ARCHITECTURE.md"),
+    "utf8",
+  );
+  const projectSetup = await fs.readFile(
+    path.join(rootDir, "docs", "PROJECT_KANBAN_SETUP.md"),
+    "utf8",
+  );
+  const testing = await fs.readFile(path.join(rootDir, "docs", "TESTING.md"), "utf8");
+
+  assert.doesNotMatch(architecture, /runtime reconstruible/u);
+  assert.match(architecture, /historial operativo/u);
+  assert.match(projectSetup, /funcional en `testing`/u);
+  assert.match(projectSetup, /operacionalmente\s+en `verifying`/u);
+  assert.match(testing, /fixtures, no\s+documentación de producto/u);
+  assert.match(testing, /Node\.js 22 y 24/u);
 });
