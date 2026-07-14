@@ -298,6 +298,9 @@ export class RuntimeStore {
       }
     }
     this.db = new DatabaseSync(this.filePath);
+    // Apply the wait policy before WAL/schema initialization: two fresh CLI
+    // processes can otherwise race in PRAGMA journal_mode and fail immediately.
+    this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec(runtimeSchema);
     fs.chmodSync(this.filePath, 0o600);
   }

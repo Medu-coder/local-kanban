@@ -27,6 +27,7 @@
     "check": "node scripts/check-static.js",
     "test:unit": "node --test test/*.test.js",
     "test:quality": "node --test test/diagnostics.test.js test/evals.test.js",
+    "test:dogfood": "node --test test/cli.test.js test/diagnostics.test.js test/evals.test.js test/workflow-cli.test.js test/workflow-commands.test.js",
     "test:skill": "node --test test/skill-management.test.js",
     "eval": "node scripts/eval-agent-flow.js",
     "benchmark": "node scripts/benchmark.js",

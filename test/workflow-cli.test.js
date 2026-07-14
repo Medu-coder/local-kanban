@@ -486,3 +486,108 @@ test("CLI next conserva trabajo bloqueado o liberado en la cola de atención", a
     await fs.rm(rootPath, { recursive: true, force: true });
   }
 });
+
+test("CLI mantiene un único ganador ante claims concurrentes reales", async () => {
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-concurrent-cli-"));
+  const configPath = path.join(rootPath, ".config", "projects.json");
+  await git(rootPath, ["init", "-q"]);
+  try {
+    await fs.writeFile(path.join(rootPath, "README.md"), "# Concurrent\n", "utf8");
+    await runCli(["init", "--id", "concurrent-project", "--name", "Concurrent", "--json"], rootPath, configPath);
+    await runCli([
+      "create-story", "STO-RACE", "--title", "Claim único", "--objective", "Evitar doble ownership",
+      "--acceptance", "Un ganador", "--validation", "node -e \"process.exit(0)\"",
+      "--context", "README.md", "--subtasks", "Ejecutar", "--json",
+    ], rootPath, configPath);
+
+    const results = await Promise.allSettled([
+      runCli(["claim", "STO-RACE", "--agent", "agent-a", "--json"], rootPath, configPath),
+      runCli(["claim", "STO-RACE", "--agent", "agent-b", "--json"], rootPath, configPath),
+    ]);
+    const winners = results.filter((result) => result.status === "fulfilled");
+    const losers = results.filter((result) => result.status === "rejected");
+    assert.equal(
+      winners.length,
+      1,
+      JSON.stringify(results.map((result) => result.status === "fulfilled"
+        ? { status: result.status, stdout: result.value.stdout }
+        : { status: result.status, stderr: result.reason.stderr, message: result.reason.message })),
+    );
+    assert.equal(losers.length, 1);
+    assert.match(losers[0].reason.stderr, /story_already_claimed/u);
+    const capsule = JSON.parse(winners[0].value.stdout);
+    assert.equal(capsule.execution.fencingToken, 1);
+    assert.ok(["agent-a", "agent-b"].includes(capsule.execution.agentId));
+  } finally {
+    await fs.rm(rootPath, { recursive: true, force: true });
+  }
+});
+
+test("CLI recupera una validación fallida y protege un worktree sucio", async () => {
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-recovery-cli-"));
+  const configPath = path.join(rootPath, ".config", "projects.json");
+  await git(rootPath, ["init", "-q"]);
+  try {
+    await fs.writeFile(path.join(rootPath, "README.md"), "# Recovery\n", "utf8");
+    await runCli(["init", "--id", "recovery-project", "--name", "Recovery", "--json"], rootPath, configPath);
+    await runCli([
+      "create-story", "STO-RECOVER", "--title", "Recuperar validación",
+      "--objective", "Conservar el intento tras un fallo corregible",
+      "--acceptance", "Artefacto presente",
+      "--validation", "node -e \"require('node:fs').accessSync('ready.txt')\"",
+      "--context", "README.md", "--subtasks", "Crear artefacto", "--json",
+    ], rootPath, configPath);
+    await git(rootPath, ["add", "."]);
+    await git(rootPath, ["commit", "-qm", "plan recovery"]);
+    const claimed = JSON.parse((await runCli([
+      "claim", "STO-RECOVER", "--agent", "recovery-agent", "--json",
+    ], rootPath, configPath)).stdout);
+    const envelope = [
+      "--attempt-id", claimed.execution.attemptId,
+      "--fencing-token", String(claimed.execution.fencingToken),
+      "--actor", "recovery-agent", "--json",
+    ];
+    const worktree = JSON.parse((await runCli([
+      "worktree", "STO-RECOVER", ...envelope,
+    ], rootPath, configPath)).stdout);
+    await fs.writeFile(path.join(worktree.path, "dirty.txt"), "uncommitted\n", "utf8");
+
+    await assert.rejects(
+      runCli(["worktree-remove", "STO-RECOVER", ...envelope], rootPath, configPath),
+      (error) => error.code === 2 && /worktree_dirty/u.test(error.stderr),
+    );
+    const runtimeBefore = openRuntime(rootPath);
+    const renewalsBefore = runtimeBefore.listAuditEvents({ storyId: "STO-RECOVER" })
+      .filter((event) => event.eventType === "lease_renewed").length;
+    runtimeBefore.close();
+    await assert.rejects(
+      runCli(["validate", "STO-RECOVER", ...envelope], worktree.path, configPath),
+      (error) => error.code === 2 && /validation_failed/u.test(error.stderr),
+    );
+    const runtimeAfter = openRuntime(rootPath);
+    const renewalsAfter = runtimeAfter.listAuditEvents({ storyId: "STO-RECOVER" })
+      .filter((event) => event.eventType === "lease_renewed").length;
+    runtimeAfter.close();
+    assert.equal(renewalsAfter, renewalsBefore + 1);
+
+    await fs.rm(path.join(worktree.path, "dirty.txt"));
+    await fs.writeFile(path.join(worktree.path, "ready.txt"), "ready\n", "utf8");
+    await git(worktree.path, ["add", "ready.txt"]);
+    await git(worktree.path, ["commit", "-qm", "add validated artifact"]);
+    await runCli(["check", "STO-RECOVER", ...envelope, "--subtask", "crear-artefacto"], rootPath, configPath);
+    await runCli(["check", "STO-RECOVER", ...envelope, "--criterion", "artefacto-presente"], rootPath, configPath);
+    const validated = JSON.parse((await runCli([
+      "validate", "STO-RECOVER", ...envelope,
+    ], worktree.path, configPath)).stdout);
+    assert.equal(validated.capsule.story.status, "testing");
+    await runCli(["release", "STO-RECOVER", ...envelope, "--outcome", "released"], rootPath, configPath);
+    const removed = JSON.parse((await runCli([
+      "worktree-remove", "STO-RECOVER", "--attempt-id", claimed.execution.attemptId,
+      "--delete-branch", "--json",
+    ], rootPath, configPath)).stdout);
+    assert.equal(removed.removed, true);
+    assert.equal(removed.branchDeleted, true);
+  } finally {
+    await fs.rm(rootPath, { recursive: true, force: true });
+  }
+});
