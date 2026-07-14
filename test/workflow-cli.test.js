@@ -279,7 +279,7 @@ test("CLI cubre planificación completa sin editar Markdown manualmente", async 
       "--title", "Implementar cambio",
       "--objective", "Crear y verificar un resultado observable",
       "--acceptance", "Resultado observable",
-      "--validation", "node -e \"process.exit(0)\"",
+      "--validation", "node -e \"require('node:fs').accessSync('implemented.txt')\"",
       "--context", "README.md",
       "--scope", "README.md",
       "--subtasks", "Implementar",
@@ -300,6 +300,9 @@ test("CLI cubre planificación completa sin editar Markdown manualmente", async 
       (await runCli(["worktree", "STO-001", ...envelope], rootPath, configPath)).stdout,
     );
     assert.equal(worktree.created, true);
+    await fs.writeFile(path.join(worktree.path, "implemented.txt"), "implemented\n", "utf8");
+    await git(worktree.path, ["add", "implemented.txt"]);
+    await git(worktree.path, ["commit", "-qm", "implement"]);
     await runCli(["check", "STO-001", ...envelope, "--subtask", "implementar"], rootPath, configPath);
     await runCli(["check", "STO-001", ...envelope, "--criterion", "resultado-observable"], rootPath, configPath);
     const blocked = JSON.parse((await runCli([
@@ -309,7 +312,7 @@ test("CLI cubre planificación completa sin editar Markdown manualmente", async 
     ], rootPath, configPath)).stdout);
     await runCli(["resolve", "STO-001", ...envelope, "--block-id", blocked.block.id], rootPath, configPath);
     await runCli(["checkpoint", "STO-001", ...envelope, "--summary", "Implementación lista"], rootPath, configPath);
-    await runCli(["validate", "STO-001", ...envelope], rootPath, configPath);
+    await runCli(["validate", "STO-001", ...envelope], worktree.path, configPath);
     const completed = JSON.parse((await runCli([
       "complete", "STO-001", ...envelope, "--role", "orchestrator", "--actor", "orchestrator",
     ], rootPath, configPath)).stdout);

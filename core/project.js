@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 import { DomainError } from "./errors.js";
 import { atomicWriteFile } from "./atomic-write.js";
@@ -8,6 +10,7 @@ import { assertNoSymlinkComponents } from "./paths.js";
 import { validateProject } from "./schema.js";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const execFileAsync = promisify(execFile);
 export const kanbanRoot = path.resolve(moduleDir, "..");
 export const defaultProjectsConfigPath = path.join(kanbanRoot, "config", "projects.json");
 
@@ -139,13 +142,38 @@ export async function getRegisteredProject(options = {}) {
     }
   }
   if (!project) {
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["-C", canonicalRoot, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        { maxBuffer: 1024 * 1024 },
+      );
+      const commonDir = (await fs.realpath(stdout.trim())).replace(/[\\/]$/u, "");
+      const commonRoot = path.basename(commonDir) === ".git" ? path.dirname(commonDir) : null;
+      if (commonRoot) {
+        for (const item of projects) {
+          try {
+            if ((await fs.realpath(item.rootPath)) === commonRoot) {
+              project = item;
+              break;
+            }
+          } catch (error) {
+            if (error.code !== "ENOENT") throw error;
+          }
+        }
+      }
+    } catch {
+      // A normal repository without a matching registration falls through below.
+    }
+  }
+  if (!project) {
     throw new DomainError(
       "project_not_registered",
       "El proyecto actual no está registrado. Ejecuta local-kanban init.",
       { details: { rootPath: canonicalRoot, configPath }, status: 404 },
     );
   }
-  return { ...project, rootPath: canonicalRoot };
+  return { ...project, rootPath: await fs.realpath(project.rootPath) };
 }
 
 export async function registerProject(project, configPath = defaultProjectsConfigPath) {

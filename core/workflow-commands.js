@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
 
 import { transitionStoryCommand, validateProjectDocuments } from "./commands.js";
@@ -452,6 +454,28 @@ async function executeValidationCommand(command, cwd) {
   }
 }
 
+async function executionRoot(options, projectRoot) {
+  const requested = await fs.realpath(options.cwd ?? projectRoot);
+  const canonicalProject = await fs.realpath(projectRoot);
+  if (requested === canonicalProject) return canonicalProject;
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", requested, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+    );
+    const commonDir = await fs.realpath(stdout.trim());
+    if (path.basename(commonDir) === ".git" && path.dirname(commonDir) === canonicalProject) {
+      return requested;
+    }
+  } catch {
+    // Convert any Git/path failure into a scoped domain error below.
+  }
+  throw new DomainError("worktree_mismatch", "El checkout actual no pertenece al proyecto registrado.", {
+    details: { requested, projectRoot: canonicalProject },
+    status: 409,
+  });
+}
+
 export async function validateStoryWorkflow(options) {
   const envelope = claimEnvelope(options);
   const { project, paths, story } = await storyContext(options);
@@ -468,11 +492,12 @@ export async function validateStoryWorkflow(options) {
     runtime.close();
   }
 
-  const commit = await gitCommit(paths.rootPath, options.commit);
+  const validationRoot = await executionRoot(options, paths.rootPath);
+  const commit = await gitCommit(validationRoot, options.commit);
   const commands = story.validation.commands;
   const results = [];
   for (const command of commands) {
-    results.push(await executeValidationCommand(command, paths.rootPath));
+    results.push(await executeValidationCommand(command, validationRoot));
   }
   const recordedAt = new Date().toISOString();
   const evidence = results.map((result) => ({
