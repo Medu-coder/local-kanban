@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs/promises";
 import matter from "gray-matter";
-import { getStoryPath, resetFixtureWorkspace, updateMarkdownFrontmatter } from "../helpers/fixture.js";
+import { configPath, getStoryPath, resetFixtureWorkspace, updateMarkdownFrontmatter } from "../helpers/fixture.js";
 
 test.beforeEach(async ({ page }) => {
   await resetFixtureWorkspace();
@@ -80,4 +80,25 @@ test("un documento no-v1 permanece visible pero rechaza mutaciones", async ({ re
   expect(response.status()).toBe(409);
   expect(await response.json()).toMatchObject({ code: "legacy_document_read_only" });
   expect(await fs.readFile(getStoryPath("STO-001"), "utf8")).toBe(before);
+});
+
+test("un proyecto con ruta inexistente queda aislado sin bloquear la UI", async ({ page }) => {
+  const config = JSON.parse(await fs.readFile(configPath, "utf8"));
+  config.unshift({
+    schema_version: 1,
+    id: "missing-project",
+    name: "Proyecto no disponible",
+    rootPath: "/ruta/que/no/existe",
+    docsPath: "docs/kanban",
+  });
+  await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+  await page.reload();
+  await page.getByRole("button", { name: /Proyecto no disponible/u }).click();
+
+  await expect(page.getByTestId("current-project-name")).toHaveText("Proyecto no disponible");
+  await expect(page.getByTestId("project-unavailable")).toContainText("Revisa su rootPath");
+  await expect(page.getByTestId("create-story-button")).toHaveCount(0);
+  await page.getByRole("button", { name: /Proyecto de ejemplo/u }).click();
+  await expect(page.getByTestId("story-card-STO-001")).toBeVisible();
 });

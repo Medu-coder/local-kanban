@@ -46,15 +46,10 @@ test("crea una historia desde toolbar y la muestra en el tablero", async ({ page
   await expect(file).toContain("agent_owner: codex-e2e");
 });
 
-test("rechaza la creación rápida fuera de backlog para exigir transición canónica", async ({ page }) => {
-  await page.getByTestId("quick-create-EPI-002-testing").click();
-  await page.getByTestId("story-title-input").fill("Historia rapida");
-  await page.getByTestId("story-agent-owner-input").fill("codex-fast");
-  await page.getByTestId("story-context-files-input").fill("src/fast.ts");
-  await page.getByTestId("save-story-button").click();
-
-  await expect(page.getByText("Una historia nueva debe crearse en backlog y avanzar mediante transiciones.")).toBeVisible();
-  await expect(page.getByTestId("story-card-STO-historia-rapida")).toHaveCount(0);
+test("solo ofrece creación rápida en backlog", async ({ page }) => {
+  await expect(page.getByTestId("quick-create-EPI-002-backlog")).toBeVisible();
+  await expect(page.getByTestId("quick-create-EPI-002-testing")).toHaveCount(0);
+  await expect(page.getByTestId("quick-create-EPI-002-done")).toHaveCount(0);
 });
 
 test("filtra por épica y busca historias por texto", async ({ page }) => {
@@ -82,29 +77,18 @@ test("crea y edita una épica desde el gestor", async ({ page }) => {
   await expect(page.getByTestId("epic-manager-panel").getByText("Nueva épica E2E")).toBeVisible();
 });
 
-test("exige crear en backlog incluso con ready checklist vacío", async ({ page }) => {
+test("fija la creación de historias en backlog", async ({ page }) => {
   await page.getByTestId("create-story-button").click();
-  await page.getByTestId("story-title-input").fill("Historia lista sin checklist");
-  await page.getByTestId("story-agent-owner-input").fill("codex-ready");
-  await page.getByTestId("story-execution-mode-select").selectOption("agent");
-  await page.getByTestId("story-status-select").selectOption("developing");
-  await page.getByTestId("story-context-files-input").fill("src/ready.ts");
-  await page.getByTestId("save-story-button").click();
-
-  await expect(page.getByText("Una historia nueva debe crearse en backlog y avanzar mediante transiciones.")).toBeVisible();
-  await expect(page.getByTestId("story-card-STO-historia-lista-sin-checklist")).toHaveCount(0);
+  await expect(page.getByTestId("story-status-select")).toBeDisabled();
+  await expect(page.getByTestId("story-status-select")).toHaveValue("backlog");
 });
 
-test("rechaza crear directamente en done", async ({ page }) => {
-  await page.getByTestId("create-story-button").click();
-  await page.getByTestId("story-title-input").fill("Historia sin validacion final");
-  await page.getByTestId("story-agent-owner-input").fill("codex-done");
-  await page.getByTestId("story-status-select").selectOption("done");
-  await page.getByTestId("story-context-files-input").fill("src/done.ts");
-  await page.getByTestId("save-story-button").click();
-
-  await expect(page.getByText("Una historia nueva debe crearse en backlog y avanzar mediante transiciones.")).toBeVisible();
-  await expect(page.getByTestId("story-card-STO-historia-sin-validacion-final")).toHaveCount(0);
+test("bloquea en edición los campos que requieren operaciones canónicas", async ({ page }) => {
+  await page.getByTestId("story-card-STO-001").click();
+  await page.getByRole("button", { name: "Editar" }).click();
+  await expect(page.getByTestId("story-status-select")).toBeDisabled();
+  await expect(page.getByTestId("story-epic-select")).toBeDisabled();
+  await expect(page.getByTestId("story-body-input")).toBeDisabled();
 });
 
 test("crea una historia sin épica y luego la mueve a una épica", async ({ page }) => {

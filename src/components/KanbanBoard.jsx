@@ -203,15 +203,17 @@ export function KanbanBoard({
                   onDrop={() => onDropStory(status.id, lane.id)}
                 >
                   <div className="epic-lane__column-inner">
-                    <button
-                      className="quick-create-button"
-                      type="button"
-                      data-sidepanel-action="true"
-                      data-testid={`quick-create-${lane.id}-${status.id}`}
-                      onClick={() => onQuickCreateStory(lane.id, status.id)}
-                    >
-                      + Crear historia
-                    </button>
+                    {status.id === "backlog" ? (
+                      <button
+                        className="quick-create-button"
+                        type="button"
+                        data-sidepanel-action="true"
+                        data-testid={`quick-create-${lane.id}-${status.id}`}
+                        onClick={() => onQuickCreateStory(lane.id, status.id)}
+                      >
+                        + Crear historia
+                      </button>
+                    ) : null}
 
                     {lane.storiesByStatus[status.id].length ? (
                       <div className="story-stack">

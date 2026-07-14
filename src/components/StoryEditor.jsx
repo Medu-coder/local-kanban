@@ -64,21 +64,6 @@ function parseMultilineList(value) {
     .filter(Boolean);
 }
 
-function formatDateTimeLocal(value) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const offset = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - offset * 60_000);
-  return localDate.toISOString().slice(0, 16);
-}
-
 function normalizeCriteria(criteria) {
   return criteria
     .map((criterion, index) => {
@@ -114,11 +99,8 @@ function makeInitialState(story, draft) {
       storyType: story.storyType ?? "feature",
       labels: listToString(story.labels),
       blockedBy: listToString(story.blockedBy),
-      blocks: listToString(story.blocks),
       relatedTo: listToString(story.relatedTo),
       contextFiles: listToString(story.contextFiles, "\n"),
-      agentStatusNote: story.agentStatusNote ?? "",
-      lastAgentUpdate: formatDateTimeLocal(story.lastAgentUpdate),
       body: story.body ?? "",
       subtasks: Array.isArray(story.subtasks) && story.subtasks.length
         ? story.subtasks.map(hydrateSubtask)
@@ -145,11 +127,8 @@ function makeInitialState(story, draft) {
     storyType: "feature",
     labels: "",
     blockedBy: "",
-    blocks: "",
     relatedTo: "",
     contextFiles: "",
-    agentStatusNote: "",
-    lastAgentUpdate: "",
     body: "",
     subtasks: [{ ...emptySubtask, uiKey: createUiKey("subtask") }],
     readyCriteria: [],
@@ -173,11 +152,8 @@ function normalizeFormState(story, draft) {
     storyType: baseState.storyType,
     labels: parseInlineList(baseState.labels),
     blockedBy: parseInlineList(baseState.blockedBy),
-    blocks: parseInlineList(baseState.blocks),
     relatedTo: parseInlineList(baseState.relatedTo),
     contextFiles: parseMultilineList(baseState.contextFiles),
-    agentStatusNote: baseState.agentStatusNote.trim(),
-    lastAgentUpdate: baseState.lastAgentUpdate ? new Date(baseState.lastAgentUpdate).toISOString() : null,
     body: baseState.body.trim(),
     subtasks: baseState.subtasks
       .map((subtask) => ({
@@ -224,11 +200,8 @@ export function StoryEditor({
       storyType: form.storyType,
       labels: parseInlineList(form.labels),
       blockedBy: parseInlineList(form.blockedBy),
-      blocks: parseInlineList(form.blocks),
       relatedTo: parseInlineList(form.relatedTo),
       contextFiles: parseMultilineList(form.contextFiles),
-      agentStatusNote: form.agentStatusNote.trim(),
-      lastAgentUpdate: form.lastAgentUpdate ? new Date(form.lastAgentUpdate).toISOString() : null,
       body: form.body.trim(),
       subtasks: form.subtasks
         .map((subtask) => ({
@@ -343,11 +316,8 @@ export function StoryEditor({
       executionMode: form.executionMode,
       storyType: form.storyType,
       blockedBy: parseInlineList(form.blockedBy),
-      blocks: parseInlineList(form.blocks),
       relatedTo: parseInlineList(form.relatedTo),
       contextFiles: parseMultilineList(form.contextFiles),
-      agentStatusNote: form.agentStatusNote.trim(),
-      lastAgentUpdate: form.lastAgentUpdate ? new Date(form.lastAgentUpdate).toISOString() : null,
       labels: parseInlineList(form.labels),
       body: form.body,
       subtasks: form.subtasks
@@ -399,7 +369,12 @@ export function StoryEditor({
         <div className="field-grid">
           <label className="field">
             <span>Epica</span>
-            <select data-testid="story-epic-select" value={form.epicId} onChange={(event) => updateField("epicId", event.target.value)}>
+            <select
+              data-testid="story-epic-select"
+              value={form.epicId}
+              onChange={(event) => updateField("epicId", event.target.value)}
+              disabled={Boolean(story)}
+            >
               <option value="">Sin epica</option>
               {epics.map((epic) => (
                 <option key={epic.id} value={epic.id}>
@@ -411,7 +386,7 @@ export function StoryEditor({
 
           <label className="field">
             <span>Estado</span>
-            <select data-testid="story-status-select" value={form.status} onChange={(event) => updateField("status", event.target.value)}>
+            <select data-testid="story-status-select" value={form.status} disabled>
               <option value="backlog">Backlog</option>
               <option value="developing">Developing</option>
               <option value="testing">Testing</option>
@@ -459,26 +434,14 @@ export function StoryEditor({
           </label>
         </div>
 
-        <div className="field-grid">
-          <label className="field">
-            <span>Execution mode</span>
-            <select data-testid="story-execution-mode-select" value={form.executionMode} onChange={(event) => updateField("executionMode", event.target.value)}>
-              <option value="human">Human</option>
-              <option value="agent">Agent</option>
-              <option value="hybrid">Hybrid</option>
-            </select>
-          </label>
-
-          <label className="field">
-            <span>Ultima actualizacion agente</span>
-            <input
-              data-testid="story-last-agent-update-input"
-              type="datetime-local"
-              value={form.lastAgentUpdate}
-              onChange={(event) => updateField("lastAgentUpdate", event.target.value)}
-            />
-          </label>
-        </div>
+        <label className="field">
+          <span>Execution mode</span>
+          <select data-testid="story-execution-mode-select" value={form.executionMode} onChange={(event) => updateField("executionMode", event.target.value)}>
+            <option value="human">Human</option>
+            <option value="agent">Agent</option>
+            <option value="hybrid">Hybrid</option>
+          </select>
+        </label>
 
         <label className="field">
           <span>Labels</span>
@@ -490,27 +453,15 @@ export function StoryEditor({
           />
         </label>
 
-        <div className="field-grid">
-          <label className="field">
-            <span>Blocked by</span>
-            <input
-              data-testid="story-blocked-by-input"
-              value={form.blockedBy}
-              onChange={(event) => updateField("blockedBy", event.target.value)}
-              placeholder="STO-001, STO-002"
-            />
-          </label>
-
-          <label className="field">
-            <span>Blocks</span>
-            <input
-              data-testid="story-blocks-input"
-              value={form.blocks}
-              onChange={(event) => updateField("blocks", event.target.value)}
-              placeholder="STO-010, STO-011"
-            />
-          </label>
-        </div>
+        <label className="field">
+          <span>Blocked by</span>
+          <input
+            data-testid="story-blocked-by-input"
+            value={form.blockedBy}
+            onChange={(event) => updateField("blockedBy", event.target.value)}
+            placeholder="STO-001, STO-002"
+          />
+        </label>
 
         <label className="field">
           <span>Related to</span>
@@ -530,16 +481,6 @@ export function StoryEditor({
             value={form.contextFiles}
             onChange={(event) => updateField("contextFiles", event.target.value)}
             placeholder={"src/auth/google.ts\nsrc/routes/login.ts"}
-          />
-        </label>
-
-        <label className="field">
-          <span>Agent status note</span>
-          <textarea
-            data-testid="story-agent-status-note-input"
-            rows="3"
-            value={form.agentStatusNote}
-            onChange={(event) => updateField("agentStatusNote", event.target.value)}
           />
         </label>
 
@@ -681,7 +622,13 @@ export function StoryEditor({
                     </label>
                   )}
                 </div>
-                <button className="ghost-button" type="button" onClick={() => removeCriterion("doneCriteria", index)}>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  disabled={form.doneCriteria.length === 1}
+                  title={form.doneCriteria.length === 1 ? "Se requiere al menos un criterio de aceptación" : undefined}
+                  onClick={() => removeCriterion("doneCriteria", index)}
+                >
                   Quitar
                 </button>
               </div>
@@ -727,7 +674,13 @@ export function StoryEditor({
 
         <label className="field">
           <span>Detalle Markdown</span>
-          <textarea rows="9" value={form.body} onChange={(event) => updateField("body", event.target.value)} />
+          <textarea
+            data-testid="story-body-input"
+            rows="9"
+            value={form.body}
+            onChange={(event) => updateField("body", event.target.value)}
+            disabled={Boolean(story)}
+          />
         </label>
 
         <button className="primary-button" type="submit" disabled={isSaving} data-testid="save-story-button">

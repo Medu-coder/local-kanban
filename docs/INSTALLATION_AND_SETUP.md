@@ -21,16 +21,18 @@ npm --version
 cd /ruta/al/checkout/local-kanban
 npm ci
 npm link
+npm run setup
 ```
 
 `npm link` deja disponible el ejecutable `local-kanban` para invocarlo desde cualquier proyecto local.
+`npm run setup` crea `config/projects.json` cuando falta y enlaza la skill canónica sin
+sobrescribir una configuración ya existente.
 
 ## 2. Enlazar la skill canónica
 
 Desde este repositorio:
 
 ```bash
-npm run skill:install
 npm run skill:verify
 npm run skill:smoke
 ```
@@ -115,6 +117,16 @@ npm run restart
 npm run stop
 ```
 
+Después de `start` o `restart`, verifica que PM2 terminó de levantar el proceso:
+
+```bash
+npm run status
+curl --fail http://127.0.0.1:4010/api/health
+```
+
+El endpoint devuelve `health: degraded` si alguna ruta registrada ya no existe. La UI sigue
+disponible, marca el proyecto afectado y permite seleccionar cualquier otro proyecto sano.
+
 La UI no es necesaria para que los agentes operen; sirve para observación y control humano.
 El servicio escucha en `127.0.0.1:4010` por defecto. No cambies `HOST` para exponerlo
 a la red: la API no incorpora autenticación ni TLS y está diseñada para un único usuario local.
@@ -126,9 +138,12 @@ cd /ruta/a/local-kanban
 git pull
 npm ci
 npm link
+npm run setup
 npm run skill:verify
 npm run build
 npm run restart
+npm run status
+curl --fail http://127.0.0.1:4010/api/health
 ```
 
 Si la verificación del symlink falla, ejecuta `npm run skill:install` y vuelve a verificar.

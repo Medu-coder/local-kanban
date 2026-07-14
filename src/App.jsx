@@ -831,7 +831,14 @@ export default function App() {
 
           {error ? <div className="error-banner">{error}</div> : null}
 
-          {selectedProject ? (
+          {selectedProject?.health === "unavailable" ? (
+            <div className="error-banner" data-testid="project-unavailable">
+              No se puede abrir este proyecto. Revisa su <code>rootPath</code> en
+              <code> config/projects.json</code>. Detalle: {selectedProject.availabilityError?.message}
+            </div>
+          ) : null}
+
+          {selectedProject && selectedProject.health !== "unavailable" ? (
             <Toolbar
               project={selectedProject}
               searchQuery={searchQuery}
@@ -907,7 +914,7 @@ export default function App() {
             </section>
           ) : null}
 
-          {visibleProject
+          {visibleProject && visibleProject.health !== "unavailable"
             ? workspaceView === "graph"
               ? (
                 <StoryGraphView

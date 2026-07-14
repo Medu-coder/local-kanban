@@ -16,6 +16,29 @@ test("el arranque de produccion no reconstruye y PM2 es dependencia de runtime",
   assert.equal(pkg.devDependencies.pm2, undefined);
 });
 
+test("el arranque exige bundle y configuración local válidos", async () => {
+  const preflight = await fs.readFile(
+    path.join(rootDir, "scripts", "check-production-build.js"),
+    "utf8",
+  );
+
+  assert.match(preflight, /dist.*index\.html/su);
+  assert.match(preflight, /config.*projects\.json/su);
+  assert.match(preflight, /npm run setup/u);
+});
+
+test("la instalación y actualización documentadas ejecutan setup y verifican salud", async () => {
+  const readme = await fs.readFile(path.join(rootDir, "README.md"), "utf8");
+  const installation = await fs.readFile(
+    path.join(rootDir, "docs", "INSTALLATION_AND_SETUP.md"),
+    "utf8",
+  );
+
+  assert.match(readme, /npm run setup/u);
+  assert.match(installation, /npm run setup/u);
+  assert.match(installation, /curl --fail http:\/\/127\.0\.0\.1:4010\/api\/health/u);
+});
+
 test("setup y manifiesto exigen la misma version minima de Node", async () => {
   const pkg = JSON.parse(await fs.readFile(path.join(rootDir, "package.json"), "utf8"));
   const setup = await fs.readFile(path.join(rootDir, "scripts", "setup.js"), "utf8");

@@ -73,6 +73,7 @@ export function ProjectSidebar({
           {projects.map((project) => {
             const isActive = project.id === selectedProjectId;
             const totalStories = project.stories.length;
+            const isUnavailable = project.health === "unavailable";
 
             return (
               <button
@@ -82,7 +83,9 @@ export function ProjectSidebar({
                 type="button"
               >
                 <span className="project-list__name">{project.name}</span>
-                <span className="project-list__meta">Tablero local conectado a Markdown</span>
+                <span className="project-list__meta">
+                  {isUnavailable ? "Ruta local no disponible" : "Tablero local conectado a Markdown"}
+                </span>
                 <span className="project-list__stats" aria-hidden="true">
                   <span className="project-list__stat">
                     <strong>{totalStories}</strong>

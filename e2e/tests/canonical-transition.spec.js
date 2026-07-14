@@ -147,7 +147,7 @@ test("PUT y toggles v1 aplican CAS, idempotencia y preservan el body", async ({ 
     executionMode: "agent",
     storyType: "feature",
     contextFiles: ["server/index.js"],
-    readyCriteria: [{ id: "ready", label: "Lista para comenzar", kind: "manual", checked: true }],
+    readyCriteria: [],
     doneCriteria: [{ id: "http-tested", label: "HTTP validado", kind: "manual", checked: false }],
     subtasks: [{ title: "Transicionar", done: true }],
     body: "Historia canónica de integración.",
@@ -183,6 +183,7 @@ test("PUT y toggles v1 aplican CAS, idempotencia y preservan el body", async ({ 
   const story = matter(await fs.readFile(getStoryPath("STO-900"), "utf8"));
   const epic = matter(await fs.readFile(getEpicPath("EPI-900"), "utf8"));
   expect(story.data.revision).toBe(4);
+  expect(story.data.readiness_criteria).toEqual([]);
   expect(story.content.trim()).toBe("Historia canónica de integración.");
   expect(story.data.subtasks[0]).toMatchObject({ id: "transition", done: true });
   expect(epic.data.revision).toBe(2);

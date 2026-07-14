@@ -416,8 +416,7 @@ function canonicalSubtasks(subtasks, currentSubtasks = []) {
 }
 
 function canonicalCriteria(criteria, fallback = []) {
-  const coerced = coerceCriteria(criteria);
-  return coerced.length ? coerced : fallback;
+  return Array.isArray(criteria) ? coerceCriteria(criteria) : fallback;
 }
 
 function canonicalDependencies(payload, currentDependencies = []) {
@@ -448,6 +447,7 @@ function canonicalStoryEntity(payload, rawPayload, projectId, storyId, current =
   const validation = rawPayload.validation && typeof rawPayload.validation === "object"
     ? rawPayload.validation
     : current?.validation ?? { commands: ["npm test"] };
+  const acceptanceCriteria = canonicalCriteria(payload.doneCriteria, acceptanceFallback);
 
   return {
     ...(current ?? {}),
@@ -470,7 +470,9 @@ function canonicalStoryEntity(payload, rawPayload, projectId, storyId, current =
     story_type: payload.storyType,
     assignee: payload.assignee,
     agent_owner: payload.agentOwner,
-    acceptance_criteria: canonicalCriteria(payload.doneCriteria, acceptanceFallback),
+    acceptance_criteria: !current && acceptanceCriteria.length === 0
+      ? acceptanceFallback
+      : acceptanceCriteria,
     readiness_criteria: canonicalCriteria(payload.readyCriteria, current?.readiness_criteria ?? []),
     dependencies: canonicalDependencies(payload, current?.dependencies ?? []),
     context_files: payload.contextFiles,
@@ -568,100 +570,118 @@ async function loadProjects() {
 
   return Promise.all(
     config.map(async (project) => {
-      const docsRoot = path.join(project.rootPath, project.docsPath ?? "docs/kanban");
-      const epicsDir = path.join(docsRoot, "epics");
-      const storiesDir = path.join(docsRoot, "stories");
-      const epics = await readMarkdownCollection(epicsDir, "epic", project);
-      const stories = await readMarkdownCollection(storiesDir, "story", project);
-      const runtime = openRuntime(project.rootPath);
-      let coordinationByStory;
-      let quarantines;
       try {
-        await reconcileProjectDocuments(canonicalProject(project), runtime, { actor: "ui-watcher" });
-        coordinationByStory = new Map(
-          stories.map((story) => [story.id, runtime.getCoordinationState(story.id)]),
-        );
-        quarantines = new Map(
-          runtime.listQuarantines().map((item) => [`${item.entityType}:${item.entityId}`, item]),
-        );
-      } finally {
-        runtime.close();
-      }
-      const operationalStories = stories.map((story) => ({
-        ...story,
-        coordination: coordinationByStory.get(story.id),
-        quarantine: quarantines.get(`story:${story.id}`) ?? null,
-      }));
-      const storiesWithEpic = enrichStories({ ...project, epics }, operationalStories);
+        const docsRoot = path.join(project.rootPath, project.docsPath ?? "docs/kanban");
+        const epicsDir = path.join(docsRoot, "epics");
+        const storiesDir = path.join(docsRoot, "stories");
+        const epics = await readMarkdownCollection(epicsDir, "epic", project);
+        const stories = await readMarkdownCollection(storiesDir, "story", project);
+        const runtime = openRuntime(project.rootPath);
+        let coordinationByStory;
+        let quarantines;
+        try {
+          await reconcileProjectDocuments(canonicalProject(project), runtime, { actor: "ui-watcher" });
+          coordinationByStory = new Map(
+            stories.map((story) => [story.id, runtime.getCoordinationState(story.id)]),
+          );
+          quarantines = new Map(
+            runtime.listQuarantines().map((item) => [`${item.entityType}:${item.entityId}`, item]),
+          );
+        } finally {
+          runtime.close();
+        }
+        const operationalStories = stories.map((story) => ({
+          ...story,
+          coordination: coordinationByStory.get(story.id),
+          quarantine: quarantines.get(`story:${story.id}`) ?? null,
+        }));
+        const storiesWithEpic = enrichStories({ ...project, epics }, operationalStories);
 
-      const storyCountByEpic = storiesWithEpic.reduce((acc, story) => {
-        const key = normalizeId(story.epicId ?? "none");
-        acc[key] = (acc[key] ?? 0) + 1;
-        return acc;
-      }, {});
+        const storyCountByEpic = storiesWithEpic.reduce((acc, story) => {
+          const key = normalizeId(story.epicId ?? "none");
+          acc[key] = (acc[key] ?? 0) + 1;
+          return acc;
+        }, {});
 
-      const statusCountByEpic = storiesWithEpic.reduce((acc, story) => {
-        const key = normalizeId(story.epicId ?? "none");
-        if (!acc[key]) {
-          acc[key] = {
+        const statusCountByEpic = storiesWithEpic.reduce((acc, story) => {
+          const key = normalizeId(story.epicId ?? "none");
+          if (!acc[key]) {
+            acc[key] = {
+              backlog: 0,
+              developing: 0,
+              testing: 0,
+              done: 0,
+            };
+          }
+
+          acc[key][story.status] += 1;
+          return acc;
+        }, {});
+
+        const hydratedEpics = epics.map((epic) => ({
+          ...epic,
+          storyCount: storyCountByEpic[normalizeId(epic.id)] ?? 0,
+          statusCounts: statusCountByEpic[normalizeId(epic.id)] ?? {
             backlog: 0,
             developing: 0,
             testing: 0,
             done: 0,
-          };
-        }
+          },
+          doneCount: statusCountByEpic[normalizeId(epic.id)]?.done ?? 0,
+          progressScore: ["backlog", "developing", "testing", "done"].reduce(
+            (acc, status) =>
+              acc +
+              (statusCountByEpic[normalizeId(epic.id)]?.[status] ?? 0) * epicProgressWeights[status],
+            0
+          ),
+          progressMax: (storyCountByEpic[normalizeId(epic.id)] ?? 0) * epicProgressWeights.done,
+          progressPercent:
+            (storyCountByEpic[normalizeId(epic.id)] ?? 0) > 0
+              ? Math.round(
+                  (["backlog", "developing", "testing", "done"].reduce(
+                    (acc, status) =>
+                      acc +
+                      (statusCountByEpic[normalizeId(epic.id)]?.[status] ?? 0) *
+                        epicProgressWeights[status],
+                    0
+                  ) /
+                    ((storyCountByEpic[normalizeId(epic.id)] ?? 0) * epicProgressWeights.done)) *
+                    100
+                )
+              : 0,
+        }));
 
-        acc[key][story.status] += 1;
-        return acc;
-      }, {});
-
-      const hydratedEpics = epics.map((epic) => ({
-        ...epic,
-        storyCount: storyCountByEpic[normalizeId(epic.id)] ?? 0,
-        statusCounts: statusCountByEpic[normalizeId(epic.id)] ?? {
-          backlog: 0,
-          developing: 0,
-          testing: 0,
-          done: 0,
-        },
-        doneCount: statusCountByEpic[normalizeId(epic.id)]?.done ?? 0,
-        progressScore: ["backlog", "developing", "testing", "done"].reduce(
-          (acc, status) =>
-            acc +
-            (statusCountByEpic[normalizeId(epic.id)]?.[status] ?? 0) * epicProgressWeights[status],
-          0
-        ),
-        progressMax: (storyCountByEpic[normalizeId(epic.id)] ?? 0) * epicProgressWeights.done,
-        progressPercent:
-          (storyCountByEpic[normalizeId(epic.id)] ?? 0) > 0
-            ? Math.round(
-                (["backlog", "developing", "testing", "done"].reduce(
-                  (acc, status) =>
-                    acc +
-                    (statusCountByEpic[normalizeId(epic.id)]?.[status] ?? 0) *
-                      epicProgressWeights[status],
-                  0
-                ) /
-                  ((storyCountByEpic[normalizeId(epic.id)] ?? 0) * epicProgressWeights.done)) *
-                  100
-              )
-            : 0,
-      }));
-
-      return {
-        id: project.id,
-        name: project.name,
-        rootPath: project.rootPath,
-        docsPath: project.docsPath ?? "docs/kanban",
-        epics: hydratedEpics,
-        stories: storiesWithEpic,
-        health: quarantines.size > 0 ? "degraded" : "healthy",
-        quarantines: [...quarantines.values()],
-        stats: statuses.reduce((acc, status) => {
-          acc[status] = storiesWithEpic.filter((story) => story.status === status).length;
-          return acc;
-        }, {}),
-      };
+        return {
+          id: project.id,
+          name: project.name,
+          rootPath: project.rootPath,
+          docsPath: project.docsPath ?? "docs/kanban",
+          epics: hydratedEpics,
+          stories: storiesWithEpic,
+          health: quarantines.size > 0 ? "degraded" : "healthy",
+          quarantines: [...quarantines.values()],
+          stats: statuses.reduce((acc, status) => {
+            acc[status] = storiesWithEpic.filter((story) => story.status === status).length;
+            return acc;
+          }, {}),
+        };
+      } catch (error) {
+        return {
+          id: project.id,
+          name: project.name,
+          rootPath: project.rootPath,
+          docsPath: project.docsPath ?? "docs/kanban",
+          epics: [],
+          stories: [],
+          health: "unavailable",
+          quarantines: [],
+          stats: Object.fromEntries(statuses.map((status) => [status, 0])),
+          availabilityError: {
+            code: error?.code ?? "project_unavailable",
+            message: error instanceof Error ? error.message : String(error),
+          },
+        };
+      }
     })
   );
 }
@@ -1258,7 +1278,16 @@ app.get("/api/health", async (_req, res) => {
       throw new TypeError("La configuración de proyectos debe ser un array.");
     }
     await fs.access(path.join(distPath, "index.html"));
-    return res.json({ ok: true });
+    const availability = await Promise.allSettled(
+      projects.map((project) => fs.access(project.rootPath)),
+    );
+    const unavailableProjects = availability.filter((result) => result.status === "rejected").length;
+    return res.json({
+      ok: true,
+      health: unavailableProjects > 0 ? "degraded" : "healthy",
+      configuredProjects: projects.length,
+      unavailableProjects,
+    });
   } catch (error) {
     return res.status(503).json({
       ok: false,

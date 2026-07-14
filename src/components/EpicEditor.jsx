@@ -151,6 +151,7 @@ export function EpicEditor({
             rows="10"
             value={form.body}
             onChange={(event) => updateField("body", event.target.value)}
+            disabled={Boolean(epic)}
           />
         </label>
 

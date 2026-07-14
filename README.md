@@ -18,11 +18,12 @@ Requisitos: macOS, Node.js 22.13 o superior y npm.
 cd /ruta/al/checkout/local-kanban
 npm ci
 npm link
-npm run skill:install
+npm run setup
 npm run skill:verify
 ```
 
-`npm link` expone el ejecutable `local-kanban`. `npm run skill:install` crea el symlink personal:
+`npm link` expone el ejecutable `local-kanban`. `npm run setup` crea la configuración local
+`config/projects.json` y enlaza la skill personal de forma idempotente:
 
 ```text
 ~/.agents/skills/local-kanban
