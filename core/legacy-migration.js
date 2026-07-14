@@ -145,6 +145,132 @@ function migrateStory(data, body, options) {
   };
 }
 
+function validateProjectedGraph(stories) {
+  const byId = new Map(stories.map((story) => [story.id, story]));
+  const orphaned = [];
+  for (const story of stories) {
+    for (const dependency of story.dependencies ?? []) {
+      if (!byId.has(dependency.story_id)) {
+        orphaned.push({ storyId: story.id, dependencyId: dependency.story_id });
+      }
+    }
+  }
+
+  const visiting = new Set();
+  const visited = new Set();
+  const cycles = [];
+  function visit(storyId, trail = []) {
+    if (visiting.has(storyId)) {
+      cycles.push([...trail.slice(trail.indexOf(storyId)), storyId]);
+      return;
+    }
+    if (visited.has(storyId)) return;
+    visiting.add(storyId);
+    const story = byId.get(storyId);
+    for (const dependency of story?.dependencies ?? []) {
+      if (dependency.type === "hard" && byId.has(dependency.story_id)) {
+        visit(dependency.story_id, [...trail, storyId]);
+      }
+    }
+    visiting.delete(storyId);
+    visited.add(storyId);
+  }
+  for (const storyId of byId.keys()) visit(storyId);
+  return { orphaned, cycles };
+}
+
+async function validateProjectedDocuments(project, paths, plan) {
+  const projectedByPath = new Map(plan.map((item) => [item.filePath, item.content]));
+  const epics = [];
+  const stories = [];
+
+  for (const [entityType, directory, validate] of [
+    ["epic", paths.epicsDir, validateEpic],
+    ["story", paths.storiesDir, validateStory],
+  ]) {
+    for (const filePath of await markdownFiles(directory)) {
+      const raw = projectedByPath.get(filePath) ??
+        await readFileLimited(filePath, { rootPath: paths.rootPath, encoding: "utf8" });
+      const parsed = matter(raw);
+      validate(parsed.data);
+      const filenameId = path.basename(filePath, ".md");
+      if (parsed.data.id !== filenameId || parsed.data.project !== project.id) {
+        throw new DomainError(
+          "legacy_migration_invalid_graph",
+          "La migración proyectada no conserva ID, fichero y proyecto canónicos.",
+          {
+            details: {
+              filePath,
+              filenameId,
+              documentId: parsed.data.id,
+              documentProject: parsed.data.project,
+              projectId: project.id,
+            },
+            status: 409,
+          },
+        );
+      }
+      (entityType === "story" ? stories : epics).push(parsed.data);
+    }
+  }
+
+  const epicIds = new Set(epics.map((epic) => epic.id));
+  const orphanEpics = stories
+    .filter((story) => story.epic && !epicIds.has(story.epic))
+    .map((story) => ({ storyId: story.id, epicId: story.epic }));
+  const graph = validateProjectedGraph(stories);
+  if (orphanEpics.length > 0 || graph.orphaned.length > 0 || graph.cycles.length > 0) {
+    throw new DomainError(
+      "legacy_migration_invalid_graph",
+      "La migración proyectada contiene referencias huérfanas o ciclos.",
+      {
+        details: { orphanEpics, orphanedDependencies: graph.orphaned, cycles: graph.cycles },
+        status: 409,
+      },
+    );
+  }
+}
+
+async function applyMigrationBatch(plan, paths, options) {
+  const writeFile = options.writeFile ?? atomicWriteFile;
+  const written = [];
+  try {
+    await options.assertSafeToApply?.();
+    for (const item of plan) {
+      await options.assertSafeToApply?.();
+      await writeFile(item.filePath, item.content, { rootPath: paths.rootPath });
+      written.push(item);
+    }
+    await options.assertSafeToApply?.();
+  } catch (error) {
+    const rollbackFailures = [];
+    for (const item of written.reverse()) {
+      try {
+        await atomicWriteFile(item.filePath, item.originalContent, { rootPath: paths.rootPath });
+      } catch (rollbackError) {
+        rollbackFailures.push({
+          filePath: item.filePath,
+          error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+        });
+      }
+    }
+    if (rollbackFailures.length > 0) {
+      throw new DomainError(
+        "legacy_migration_rollback_failed",
+        "La migración falló y no pudo restaurar todos los documentos.",
+        {
+          details: {
+            cause: error instanceof Error ? error.message : String(error),
+            rollbackFailures,
+          },
+          status: 500,
+        },
+      );
+    }
+    throw error;
+  }
+}
+
 export async function migrateLegacyDocuments(project, options = {}) {
   const paths = await resolveProjectPaths(project);
   if (!Array.isArray(options.validationCommands) || options.validationCommands.length === 0) {
@@ -187,15 +313,16 @@ export async function migrateLegacyDocuments(project, options = {}) {
               "objective/scope derivados de secciones, descripción o contexto y registrados en el diff",
             ]
           : ["objective derivado de la sección Objetivo o descripción y registrado en el diff"],
+        originalContent: raw,
         content: matter.stringify(body.trim() ? `\n${body.trim()}\n` : "", frontmatter),
       });
     }
   }
 
+  await validateProjectedDocuments(project, paths, plan);
+
   if (options.apply) {
-    for (const item of plan) {
-      await atomicWriteFile(item.filePath, item.content, { rootPath: paths.rootPath });
-    }
+    await applyMigrationBatch(plan, paths, options);
   }
   return {
     ok: true,
@@ -203,7 +330,7 @@ export async function migrateLegacyDocuments(project, options = {}) {
     migrated: plan.length,
     storiesReopenedForVerification: plan.filter((item) => item.previousStatus === "done").length,
     justification: options.justification,
-    documents: plan.map(({ content: _content, ...item }) => item),
+    documents: plan.map(({ content: _content, originalContent: _originalContent, ...item }) => item),
     nextAction: options.apply
       ? "Ejecuta local-kanban validate --json y después local-kanban doctor --json."
       : "Revisa assumptions y repite con --apply si la decisión es correcta.",

@@ -14,16 +14,27 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(repoRoot, "bin", "local-kanban.js");
 
-async function runCli(args, cwd, configPath) {
+async function runCli(args, cwd, configPath, environment = {}) {
   return execFileAsync(process.execPath, [cliPath, ...args], {
     cwd,
-    env: { ...process.env, KANBAN_CONFIG_PATH: configPath },
+    env: { ...process.env, KANBAN_CONFIG_PATH: configPath, ...environment },
   });
 }
 
-test("CLI inicializa, valida y transiciona una historia con CAS", async () => {
+async function installCanonicalSkill(homePath) {
+  const skillsPath = path.join(homePath, ".agents", "skills");
+  await fs.mkdir(skillsPath, { recursive: true });
+  await fs.symlink(
+    path.join(repoRoot, "skills", "local-kanban"),
+    path.join(skillsPath, "local-kanban"),
+    "dir",
+  );
+}
+
+test("CLI inicializa, valida y diagnostica con una skill canónica aislada", async () => {
   const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-cli-"));
   const configPath = path.join(rootPath, ".config", "projects.json");
+  const homePath = path.join(rootPath, ".home");
   await execFileAsync("git", ["init", "-q", rootPath]);
 
   try {
@@ -43,123 +54,26 @@ test("CLI inicializa, valida y transiciona una historia con CAS", async () => {
     assert.equal(validation.ok, true);
     assert.equal(validation.counts.stories, 1);
 
-    const transitioned = JSON.parse(
-      (
-        await runCli(
-          [
-            "transition",
-            "STO-001",
-            "--status",
-            "developing",
-            "--expected-revision",
-            "1",
-            "--role",
-            "specialist",
-            "--idempotency-key",
-            "cli-transition-1",
-            "--json",
-          ],
-          rootPath,
-          configPath,
-        )
-      ).stdout,
-    );
-    assert.equal(transitioned.revision, 2);
-    assert.equal(transitioned.status, "developing");
-
-    const retried = JSON.parse(
-      (
-        await runCli(
-          [
-            "transition",
-            "STO-001",
-            "--status",
-            "developing",
-            "--expected-revision",
-            "1",
-            "--role",
-            "specialist",
-            "--idempotency-key",
-            "cli-transition-1",
-            "--json",
-          ],
-          rootPath,
-          configPath,
-        )
-      ).stdout,
-    );
-    assert.deepEqual(retried, transitioned);
-
     await assert.rejects(
-      runCli(
-        [
-          "transition",
-          "STO-001",
-          "--status",
-          "testing",
-          "--expected-revision",
-          "1",
-          "--idempotency-key",
-          "stale-transition",
-          "--json",
-        ],
-        rootPath,
-        configPath,
-      ),
-      (error) => error.code === 2 && /revision_conflict/u.test(error.stderr),
+      runCli(["doctor", "--json"], rootPath, configPath, { HOME: homePath }),
+      (error) => {
+        const doctor = JSON.parse(error.stdout);
+        assert.equal(error.code, 2);
+        assert.equal(doctor.ok, true);
+        assert.equal(doctor.health, "degraded");
+        assert.equal(doctor.checks.find((check) => check.id === "skill")?.status, "warning");
+        return true;
+      },
     );
 
-    await assert.rejects(
-      runCli(
-        [
-          "transition",
-          "STO-001",
-          "--status",
-          "testing",
-          "--expected-revision",
-          "2",
-          "--epic",
-          "EPI-missing",
-          "--idempotency-key",
-          "missing-epic",
-          "--json",
-        ],
-        rootPath,
-        configPath,
-      ),
-      (error) => error.code === 2 && /epic_not_found/u.test(error.stderr),
+    await installCanonicalSkill(homePath);
+    const doctor = JSON.parse(
+      (await runCli(["doctor", "--json"], rootPath, configPath, { HOME: homePath })).stdout,
     );
-
-    const doctor = JSON.parse((await runCli(["doctor", "--json"], rootPath, configPath)).stdout);
     assert.equal(doctor.ok, true);
+    assert.equal(doctor.health, "healthy");
+    assert.equal(doctor.checks.find((check) => check.id === "skill")?.status, "pass");
     await fs.access(path.join(rootPath, ".local-kanban", "runtime.sqlite"));
-
-    await fs.writeFile(
-      storyPath,
-      serializeStory(
-        createStory({ project: "other-project", revision: 2, status: "developing" }),
-        "\nForeign story.\n",
-      ),
-      "utf8",
-    );
-    await assert.rejects(
-      runCli(
-        [
-          "transition",
-          "STO-001",
-          "--status",
-          "testing",
-          "--expected-revision",
-          "2",
-          "--idempotency-key",
-          "foreign-project",
-          "--json",
-        ],
-        rootPath,
-        configPath,
-      ),
-      (error) => error.code === 2 && /project_mismatch/u.test(error.stderr),
-    );
   } finally {
     await fs.rm(rootPath, { recursive: true, force: true });
   }

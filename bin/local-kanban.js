@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 
 import process from "node:process";
-import { randomUUID } from "node:crypto";
 
 import {
   doctorProject,
   migrateLegacyProjectCommand,
   reconcileProjectCommand,
-  transitionStoryCommand,
   validateProjectDocuments,
 } from "../core/commands.js";
 import { DomainError } from "../core/errors.js";
@@ -64,9 +62,6 @@ Uso:
   local-kanban reconcile [ENTITY_ID|--all] [--accept-current --reason TEXT] [--json]
   local-kanban migrate-legacy --validation COMMAND[,COMMAND] --risk standard|high
     --reason TEXT [--apply] [--json]
-  local-kanban transition STORY_ID --status STATUS --expected-revision N
-    [--epic EPI_ID|none] [--actor ACTOR] [--role orchestrator|specialist]
-    [--idempotency-key KEY] [--json]
   local-kanban --help
 `;
 
@@ -393,34 +388,9 @@ async function run() {
     return;
   }
 
-  if (command === "transition") {
-    const storyId = options._[0];
-    const revisionValue = String(options.expectedRevision ?? "");
-    const expectedRevision = /^\d+$/u.test(revisionValue) ? Number(revisionValue) : Number.NaN;
-    if (!storyId || !options.status || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
-      throw new DomainError(
-        "command_invalid",
-        "transition requiere STORY_ID, --status y --expected-revision.",
-      );
-    }
-    const result = await transitionStoryCommand({
-      cwd: process.cwd(),
-      configPath: process.env.KANBAN_CONFIG_PATH,
-      storyId,
-      expectedRevision,
-      nextStatus: options.status,
-      ...(Object.hasOwn(options, "epic") ? { nextEpic: options.epic === "none" ? null : options.epic } : {}),
-      actor: options.actor ?? "codex",
-      actorRole: options.role ?? "specialist",
-      idempotencyKey: options.idempotencyKey ?? randomUUID(),
-    });
-    output(result, options.json);
-    return;
-  }
-
   throw new DomainError("command_unknown", `Comando desconocido: ${command}`, {
     details: {
-      available: ["init", "create-epic", "create-story", "next", "show", "claim", "checkpoint", "block", "resolve", "check", "worktree", "worktree-remove", "release", "validate", "complete", "doctor", "reconcile", "migrate-legacy", "transition"],
+      available: ["init", "create-epic", "create-story", "next", "show", "claim", "checkpoint", "block", "resolve", "check", "worktree", "worktree-remove", "release", "validate", "complete", "doctor", "reconcile", "migrate-legacy"],
     },
   });
 }

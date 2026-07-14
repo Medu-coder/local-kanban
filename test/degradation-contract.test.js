@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import matter from "gray-matter";
 
-import { validateProjectDocuments } from "../core/commands.js";
+import { doctorProject, validateProjectDocuments } from "../core/commands.js";
 import { migrateLegacyDocuments } from "../core/legacy-migration.js";
 import { reconcileProjectDocuments, reconcileProjectQuarantines } from "../core/reconciliation.js";
 import { openRuntime } from "../core/runtime.js";
@@ -36,6 +36,38 @@ test("next y claim fallan cerrados con una cuarentena accionable", async () => {
     (error) => error.code === "project_degraded" && Boolean(error.details.nextAction),
   );
   await fixture.cleanup();
+});
+
+test("un done sin gates degrada doctor y bloquea next y claim con el mismo código", async () => {
+  const fixture = await createProjectFixture();
+  const storyPath = path.join(fixture.rootPath, "docs/kanban/stories/STO-001.md");
+  try {
+    await fs.writeFile(storyPath, serializeStory(createStory({
+      status: "done",
+      acceptance_criteria: [{ id: "acceptance", label: "Aceptar", kind: "manual", checked: false }],
+      subtasks: [{ id: "implementation", title: "Implementar", done: false }],
+      evidence: [],
+    })), "utf8");
+
+    const diagnosis = await doctorProject({ project: fixture.project, checkSkill: false });
+    assert.equal(diagnosis.health, "degraded");
+    assert.equal(diagnosis.ok, false);
+    assert.equal(diagnosis.degradations.canProceed, false);
+    assert.equal(diagnosis.degradations.issues[0].code, "done_gate_incomplete");
+
+    for (const operation of [
+      () => nextStoriesCommand({ project: fixture.project }),
+      () => claimStoryWorkflow({ project: fixture.project, storyId: "STO-001", agentId: "agent-test" }),
+    ]) {
+      await assert.rejects(
+        operation,
+        (error) => error.code === "project_degraded" &&
+          error.details.degradations.some((issue) => issue.code === "done_gate_incomplete"),
+      );
+    }
+  } finally {
+    await fixture.cleanup();
+  }
 });
 
 test("reconcile previsualiza y acepta una divergencia solo con justificación", async () => {

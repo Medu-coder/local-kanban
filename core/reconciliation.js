@@ -126,6 +126,62 @@ async function currentDocumentSnapshot(paths, quarantine, projectId) {
   return { revision: parsed.data.revision, contentHash: hashContent(raw), filePath };
 }
 
+async function preflightCurrentDocumentAcceptance(paths, runtime, quarantines, projectId) {
+  const snapshots = [];
+
+  for (const quarantine of quarantines) {
+    const snapshot = await currentDocumentSnapshot(paths, quarantine, projectId);
+    const state = runtime.db
+      .prepare(
+        `SELECT revision, content_hash, pending_operation_id
+         FROM entity_state WHERE entity_type = ? AND entity_id = ?`,
+      )
+      .get(quarantine.entityType, quarantine.entityId);
+    const activeClaim = quarantine.entityType === "story"
+      ? runtime.db
+          .prepare(
+            `SELECT attempt_id FROM claims
+             WHERE story_id = ? AND status IN ('active', 'stale')
+             ORDER BY fencing_token DESC LIMIT 1`,
+          )
+          .get(quarantine.entityId)
+      : null;
+
+    if (!state || quarantine.reason !== "revision_divergence") {
+      throw new DomainError(
+        "reconciliation_unsafe",
+        "Solo una divergencia de revisión validada puede aceptar el Markdown actual.",
+        {
+          details: {
+            entityType: quarantine.entityType,
+            entityId: quarantine.entityId,
+            reason: quarantine.reason,
+          },
+          status: 409,
+        },
+      );
+    }
+    if (state.pending_operation_id || activeClaim) {
+      throw new DomainError(
+        "reconciliation_unsafe",
+        "La entidad tiene una operación o claim activo y no puede aceptarse.",
+        {
+          details: {
+            entityType: quarantine.entityType,
+            entityId: quarantine.entityId,
+            operationId: state.pending_operation_id,
+            attemptId: activeClaim?.attempt_id,
+          },
+          status: 409,
+        },
+      );
+    }
+    snapshots.push({ quarantine, snapshot });
+  }
+
+  return snapshots;
+}
+
 export async function reconcileProjectQuarantines(project, runtime, options = {}) {
   const paths = project.docsRoot ? project : await resolveProjectPaths(project);
   await reconcileProjectDocuments(paths, runtime, { actor: options.actor ?? "reconcile" });
@@ -169,9 +225,16 @@ export async function reconcileProjectQuarantines(project, runtime, options = {}
     );
   }
 
+  // Preflight the complete selection before accepting any document. In particular,
+  // --all must not clear early divergences and then fail on a later unsafe entity.
+  const acceptancePlan = await preflightCurrentDocumentAcceptance(
+    paths,
+    runtime,
+    selected,
+    project.id,
+  );
   const accepted = [];
-  for (const quarantine of selected) {
-    const snapshot = await currentDocumentSnapshot(paths, quarantine, project.id);
+  for (const { quarantine, snapshot } of acceptancePlan) {
     accepted.push(runtime.acceptCurrentDocument({
       entityType: quarantine.entityType,
       entityId: quarantine.entityId,

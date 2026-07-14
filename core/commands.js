@@ -329,19 +329,25 @@ export async function migrateLegacyProjectCommand(options = {}) {
   const paths = await resolveProjectPaths(project);
   const runtime = openRuntime(paths.rootPath);
   try {
-    const unsafeOperations = runtime.listProblemOperations();
-    const activeClaims = runtime.db
-      .prepare("SELECT COUNT(*) AS count FROM claims WHERE status IN ('held', 'stale')")
-      .get().count;
-    if (unsafeOperations.length > 0 || activeClaims > 0) {
-      throw new DomainError(
-        "legacy_migration_unsafe",
-        "No se migra con operaciones o claims abiertos.",
-        { details: { unsafeOperations, activeClaims }, status: 409 },
-      );
-    }
+    const assertSafeToApply = () => {
+      const unsafeOperations = runtime.listProblemOperations();
+      const activeClaims = runtime.db
+        .prepare("SELECT COUNT(*) AS count FROM claims WHERE status IN ('active', 'stale')")
+        .get().count;
+      if (unsafeOperations.length > 0 || activeClaims > 0) {
+        throw new DomainError(
+          "legacy_migration_unsafe",
+          "No se migra con operaciones o claims abiertos.",
+          { details: { unsafeOperations, activeClaims }, status: 409 },
+        );
+      }
+    };
+    assertSafeToApply();
+    return await migrateLegacyDocuments(paths, {
+      ...options,
+      assertSafeToApply: options.apply ? assertSafeToApply : undefined,
+    });
   } finally {
     runtime.close();
   }
-  return migrateLegacyDocuments(paths, options);
 }

@@ -6,7 +6,11 @@ import { promisify } from "node:util";
 
 import { transitionStoryCommand, validateProjectDocuments } from "./commands.js";
 import { buildOperationalCapsule, scheduleStories } from "./coordination.js";
-import { explainQuarantine } from "./degradation.js";
+import {
+  collectDoneGateIssues,
+  explainProblemOperation,
+  explainQuarantine,
+} from "./degradation.js";
 import { DomainError } from "./errors.js";
 import {
   createEpicCommand,
@@ -72,23 +76,10 @@ async function storyContext(options) {
 
 async function runtimeDegradations(project, paths, runtime, actor) {
   await reconcileProjectDocuments(paths, runtime, { actor });
+  const validation = await validateProjectDocuments(project);
   const quarantineIssues = runtime.listQuarantines().map(explainQuarantine);
-  const operationIssues = runtime.listProblemOperations().map((operation) => ({
-    id: `operation:${operation.id}`,
-    severity: "fail",
-    code: `operation_${operation.status}`,
-    scope: operation.entity_type,
-    entityType: operation.entity_type,
-    entityId: operation.entity_id,
-    summary: `La operación durable ${operation.id} está ${operation.status}.`,
-    cause: operation.error ?? "La escritura no alcanzó un estado terminal verificable.",
-    impact: "Las mutaciones quedan bloqueadas para evitar perder o duplicar una escritura.",
-    action: "Ejecuta doctor y revisa recovery antes de continuar.",
-    command: "local-kanban doctor --json",
-    verification: "La operación deja de estar pending/quarantined y doctor devuelve healthy.",
-    details: operation,
-  }));
-  return [...quarantineIssues, ...operationIssues];
+  const operationIssues = runtime.listProblemOperations().map(explainProblemOperation);
+  return [...collectDoneGateIssues(validation.stories), ...quarantineIssues, ...operationIssues];
 }
 
 function assertRuntimeReady(issues) {
@@ -422,16 +413,16 @@ export async function claimStoryWorkflow(options) {
   const { project, paths, story } = await storyContext(options);
   const actor = requireText(options.actor ?? options.agentId ?? "codex", "actor");
   const agentId = requireText(options.agentId ?? actor, "agentId");
-  if (!["backlog", "developing", "testing"].includes(story.status)) {
-    throw new DomainError("claim_status_invalid", "Solo se puede reclamar una historia ejecutable o en verificación.", {
-      details: { storyId: story.id, status: story.status },
-      status: 409,
-    });
-  }
   const runtime = openRuntime(paths.rootPath);
   let claimed;
   try {
     assertRuntimeReady(await runtimeDegradations(project, paths, runtime, "claim-preflight"));
+    if (!["backlog", "developing", "testing"].includes(story.status)) {
+      throw new DomainError("claim_status_invalid", "Solo se puede reclamar una historia ejecutable o en verificación.", {
+        details: { storyId: story.id, status: story.status },
+        status: 409,
+      });
+    }
     claimed = runtime.claimStory({
       storyId: story.id,
       agentId,

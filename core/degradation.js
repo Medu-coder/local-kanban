@@ -1,3 +1,5 @@
+import { evaluateStoryGates } from "./story.js";
+
 const quarantineGuidance = Object.freeze({
   invalid_document: {
     summary: "El documento no cumple el contrato canónico.",
@@ -113,17 +115,54 @@ export function explainProblemOperation(operation) {
   };
 }
 
-export function degradationEnvelope({ health, checks = [], quarantines = [] }) {
-  const issues = [
+export function explainDoneGate(story, gates = evaluateStoryGates(story)) {
+  if (story.status !== "done" || gates.isDone) {
+    return null;
+  }
+  return {
+    id: `done-gate:${story.id}`,
+    severity: "fail",
+    code: "done_gate_incomplete",
+    scope: "story",
+    entityType: "story",
+    entityId: story.id,
+    summary: "La historia figura como done sin satisfacer su gate canónico.",
+    cause: "Falta aceptación, subtareas, dependencias, evidencia válida o revisión independiente.",
+    impact: "El cierre no es verificable y bloquea nuevas mutaciones hasta corregir el estado.",
+    action: "Reabre la historia en testing y completa los gates sin fabricar evidencia.",
+    command: `local-kanban show ${story.id} --json`,
+    verification: "show informa gates.isDone=true y doctor vuelve a health=healthy.",
+    details: {
+      pendingDependencies: gates.pendingDependencies ?? [],
+      pendingAcceptance: gates.pendingAcceptance ?? [],
+      pendingSubtasks: gates.pendingSubtasks ?? [],
+      activeBlockers: gates.activeBlockers ?? [],
+      hasEvidence: Boolean(gates.hasEvidence),
+      hasIndependentReview: Boolean(gates.hasIndependentReview),
+      risk: story.risk,
+    },
+  };
+}
+
+export function collectDoneGateIssues(stories = []) {
+  const statuses = new Map(stories.map((story) => [story.id, story.status]));
+  return stories
+    .map((story) => explainDoneGate(story, evaluateStoryGates(story, statuses)))
+    .filter(Boolean);
+}
+
+export function degradationEnvelope({ health, checks = [], quarantines = [], issues = [] }) {
+  const allIssues = [
+    ...issues,
     ...checks.filter((item) => item.status !== "pass").map(explainDiagnosticCheck),
     ...quarantines.map(explainQuarantine),
   ];
   return {
     health,
-    canProceed: !issues.some((item) => item.severity === "fail"),
-    issueCount: issues.length,
-    issues,
-    nextAction: issues[0]?.action ?? "Continuar con el flujo canónico.",
+    canProceed: !allIssues.some((item) => item.severity === "fail"),
+    issueCount: allIssues.length,
+    issues: allIssues,
+    nextAction: allIssues[0]?.action ?? "Continuar con el flujo canónico.",
     verification: health === "healthy"
       ? "No hay degradaciones activas."
       : "Resuelve cada issue y confirma local-kanban doctor health=healthy.",

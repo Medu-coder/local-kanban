@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { degradationEnvelope } from "./degradation.js";
+import { collectDoneGateIssues, degradationEnvelope } from "./degradation.js";
 
 const execFileAsync = promisify(execFile);
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
@@ -192,6 +192,7 @@ async function inspectSkill(options = {}) {
 }
 
 export async function diagnoseProject({ validation, recovery, paths, runtime, ...options }) {
+  const completionIssues = collectDoneGateIssues(validation.stories);
   const validationCheck = validation.ok
     ? check("schema_dag", "pass", "Schemas, referencias y DAG válidos.", validation.counts)
     : check(
@@ -219,14 +220,16 @@ export async function diagnoseProject({ validation, recovery, paths, runtime, ..
     await inspectGit(paths.rootPath),
     await inspectSkill(options),
   ];
-  const health = checks.some((item) => item.status !== "pass") ? "degraded" : "healthy";
+  const health = checks.some((item) => item.status !== "pass") || completionIssues.length > 0
+    ? "degraded"
+    : "healthy";
   const quarantines = runtime.listQuarantines();
   return {
-    ok: !checks.some((item) => item.status === "fail"),
+    ok: !checks.some((item) => item.status === "fail") && completionIssues.length === 0,
     health,
     checks,
     metrics: collectMetrics(runtime),
-    degradations: degradationEnvelope({ health, checks, quarantines }),
+    degradations: degradationEnvelope({ health, checks, quarantines, issues: completionIssues }),
     quarantines,
   };
 }
