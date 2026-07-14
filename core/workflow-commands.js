@@ -613,6 +613,12 @@ export async function completeStoryWorkflow(options) {
   }
   const envelope = claimEnvelope(options);
   const { project, paths, story } = await storyContext(options);
+  if (story.status !== "testing") {
+    throw new DomainError("completion_status_invalid", "complete exige una entrega previa en testing.", {
+      details: { storyId: story.id, status: story.status },
+      status: 409,
+    });
+  }
   const runtime = openRuntime(paths.rootPath);
   try {
     const coordination = runtime.getCoordinationState(story.id);
@@ -620,6 +626,20 @@ export async function completeStoryWorkflow(options) {
     if (coordination.blocks.length > 0) {
       throw new DomainError("completion_incomplete", "La historia mantiene bloqueos operativos.", {
         details: { blockers: coordination.blocks.map((block) => block.id) },
+        status: 409,
+      });
+    }
+    const gates = await currentGates(project, story);
+    if (!gates.isDone) {
+      throw new DomainError("completion_incomplete", "La historia no cumple su Definition of Done.", {
+        details: {
+          pendingDependencies: gates.pendingDependencies,
+          pendingCriteria: gates.pendingAcceptance,
+          pendingSubtasks: gates.pendingSubtasks,
+          blockers: gates.activeBlockers,
+          evidenceRequired: !gates.hasEvidence,
+          reviewRequired: story.risk === "high" && !gates.hasIndependentReview,
+        },
         status: 409,
       });
     }

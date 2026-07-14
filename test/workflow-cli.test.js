@@ -406,3 +406,42 @@ test("CLI completa riesgo high con handoff y review de intento independiente", a
     await fs.rm(rootPath, { recursive: true, force: true });
   }
 });
+
+test("CLI complete falla antes de mutar si no existe una entrega completa en testing", async () => {
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-complete-preflight-"));
+  const configPath = path.join(rootPath, ".config", "projects.json");
+  await git(rootPath, ["init", "-q"]);
+  try {
+    await fs.writeFile(path.join(rootPath, "README.md"), "# Preflight\n", "utf8");
+    await runCli(["init", "--id", "preflight-project", "--name", "Preflight", "--json"], rootPath, configPath);
+    await runCli([
+      "create-story", "STO-PREFLIGHT", "--title", "No cerrar antes de tiempo",
+      "--objective", "Impedir mutaciones parciales durante complete",
+      "--acceptance", "Resultado comprobado", "--validation", "node -e \"process.exit(0)\"",
+      "--context", "README.md", "--subtasks", "Implementar", "--json",
+    ], rootPath, configPath);
+    const claimed = JSON.parse((await runCli([
+      "claim", "STO-PREFLIGHT", "--agent", "orchestrator", "--json",
+    ], rootPath, configPath)).stdout);
+    const envelope = [
+      "--attempt-id", claimed.execution.attemptId,
+      "--fencing-token", String(claimed.execution.fencingToken),
+      "--actor", "orchestrator", "--json",
+    ];
+    const before = JSON.parse((await runCli(["show", "STO-PREFLIGHT", "--json"], rootPath, configPath)).stdout);
+
+    await assert.rejects(
+      runCli([
+        "complete", "STO-PREFLIGHT", ...envelope, "--role", "orchestrator",
+      ], rootPath, configPath),
+      (error) => error.code === 2 && /completion_status_invalid/u.test(error.stderr),
+    );
+
+    const after = JSON.parse((await runCli(["show", "STO-PREFLIGHT", "--json"], rootPath, configPath)).stdout);
+    assert.equal(after.story.status, "developing");
+    assert.equal(after.story.revision, before.story.revision);
+    assert.deepEqual(after.story.evidence ?? [], before.story.evidence ?? []);
+  } finally {
+    await fs.rm(rootPath, { recursive: true, force: true });
+  }
+});
