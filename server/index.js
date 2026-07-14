@@ -21,7 +21,7 @@ import {
 } from "../core/degradation.js";
 import { deriveOperationalGuidance } from "../core/coordination.js";
 import { DomainError } from "../core/errors.js";
-import { FilesystemSafetyError } from "../core/paths.js";
+import { FilesystemSafetyError, readFileLimited } from "../core/paths.js";
 import { reconcileProjectDocuments } from "../core/reconciliation.js";
 import { openRuntime } from "../core/runtime.js";
 
@@ -553,62 +553,71 @@ function canonicalEntityPatch(entity) {
 
 async function readMarkdownCollection(baseDir, kind, project) {
   const files = await safeReadDir(baseDir);
-  const items = await Promise.all(
-    files
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-      .map(async (entry) => {
-        const filePath = path.join(baseDir, entry.name);
-        const raw = await fs.readFile(filePath, "utf8");
-        const parsed = matter(raw);
-        const data = parsed.data ?? {};
-        const id = data.id ?? entry.name.replace(/\.md$/u, "");
+  const items = [];
 
-        return {
-          id: String(id),
-          schemaVersion: data.schema_version ?? null,
-          revision: Number.isInteger(data.revision) ? data.revision : null,
-          type: kind,
-          title: data.title ?? id,
-          objective: data.objective ?? "",
-          description: data.description ?? "",
-          scope: coerceStringList(data.scope),
-          nonScope: coerceStringList(data.non_scope),
-          projectId: project.id,
-          projectName: project.name,
-          status: statuses.includes(data.status) ? data.status : "backlog",
-          epicId: data.epic ? String(data.epic) : null,
-          priority: data.priority ?? "medium",
-          risk: data.risk ?? "standard",
-          rank: Number.isSafeInteger(data.rank) ? data.rank : null,
-          assignee: data.assignee ?? null,
-          agentOwner: data.agent_owner ?? null,
-          executionMode: executionModes.includes(data.execution_mode) ? data.execution_mode : "human",
-          storyType: storyTypes.includes(data.story_type) ? data.story_type : "feature",
-          blockedBy: Array.isArray(data.dependencies)
-            ? data.dependencies
-                .filter((dependency) => dependency?.type === "hard")
-                .map((dependency) => String(dependency.story_id))
-            : [],
-          relatedTo: Array.isArray(data.dependencies)
-            ? data.dependencies
-                .filter((dependency) => dependency?.type === "related")
-                .map((dependency) => String(dependency.story_id))
-            : [],
-          contextFiles: coerceStringList(data.context_files),
-          labels: Array.isArray(data.labels) ? data.labels : [],
-          subtasks: coerceSubtasks(data.subtasks),
-          readyCriteria: coerceCriteria(data.readiness_criteria),
-          doneCriteria: coerceCriteria(data.acceptance_criteria),
-          blockers: Array.isArray(data.blockers) ? data.blockers : [],
-          evidence: Array.isArray(data.evidence) ? data.evidence : [],
-          validation: data.validation ?? { commands: [] },
-          body: parsed.content.trim(),
-          filePath,
-          docsPath: project.docsPath,
-          rootPath: project.rootPath,
-        };
-      })
-  );
+  for (const entry of files) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) {
+      continue;
+    }
+
+    const filePath = path.join(baseDir, entry.name);
+    try {
+      const raw = await readFileLimited(filePath, {
+        rootPath: project.rootPath,
+        encoding: "utf8",
+      });
+      const parsed = matter(raw);
+      const data = parsed.data ?? {};
+      const id = data.id ?? entry.name.replace(/\.md$/u, "");
+
+      items.push({
+        id: String(id),
+        schemaVersion: data.schema_version ?? null,
+        revision: Number.isInteger(data.revision) ? data.revision : null,
+        type: kind,
+        title: data.title ?? id,
+        objective: data.objective ?? "",
+        description: data.description ?? "",
+        scope: coerceStringList(data.scope),
+        nonScope: coerceStringList(data.non_scope),
+        projectId: project.id,
+        projectName: project.name,
+        status: statuses.includes(data.status) ? data.status : "backlog",
+        epicId: data.epic ? String(data.epic) : null,
+        priority: data.priority ?? "medium",
+        risk: data.risk ?? "standard",
+        rank: Number.isSafeInteger(data.rank) ? data.rank : null,
+        assignee: data.assignee ?? null,
+        agentOwner: data.agent_owner ?? null,
+        executionMode: executionModes.includes(data.execution_mode) ? data.execution_mode : "human",
+        storyType: storyTypes.includes(data.story_type) ? data.story_type : "feature",
+        blockedBy: Array.isArray(data.dependencies)
+          ? data.dependencies
+              .filter((dependency) => dependency?.type === "hard")
+              .map((dependency) => String(dependency.story_id))
+          : [],
+        relatedTo: Array.isArray(data.dependencies)
+          ? data.dependencies
+              .filter((dependency) => dependency?.type === "related")
+              .map((dependency) => String(dependency.story_id))
+          : [],
+        contextFiles: coerceStringList(data.context_files),
+        labels: Array.isArray(data.labels) ? data.labels : [],
+        subtasks: coerceSubtasks(data.subtasks),
+        readyCriteria: coerceCriteria(data.readiness_criteria),
+        doneCriteria: coerceCriteria(data.acceptance_criteria),
+        blockers: Array.isArray(data.blockers) ? data.blockers : [],
+        evidence: Array.isArray(data.evidence) ? data.evidence : [],
+        validation: data.validation ?? { commands: [] },
+        body: parsed.content.trim(),
+        filePath,
+        docsPath: project.docsPath,
+        rootPath: project.rootPath,
+      });
+    } catch {
+      // La reconciliacion repite la lectura limitada y explica la cuarentena por documento.
+    }
+  }
 
   return items;
 }

@@ -136,6 +136,54 @@ test("un documento no-v1 degrada el proyecto y rechaza mutaciones", async ({ req
   expect(await fs.readFile(getStoryPath("STO-001"), "utf8")).toBe(before);
 });
 
+test("un Markdown mayor de 1 MiB queda aislado sin derribar ni inflar el servicio", async ({ request }) => {
+  const oversizedStoryPath = getStoryPath("STO-OVERSIZED");
+  await fs.writeFile(oversizedStoryPath, Buffer.alloc(1024 * 1024 + 1, "a"));
+
+  const projectsResponse = await request.get("/api/projects");
+  expect(projectsResponse.status()).toBe(200);
+  const responseBody = await projectsResponse.body();
+  expect(responseBody.byteLength).toBeLessThan(256 * 1024);
+
+  const payload = JSON.parse(responseBody.toString("utf8"));
+  const project = payload.projects.find(({ id }) => id === "sample-project");
+  expect(project).toMatchObject({
+    health: "degraded",
+    degradations: {
+      canProceed: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "invalid_document",
+          entityId: "STO-OVERSIZED",
+          cause: expect.stringContaining("1048576"),
+          details: expect.objectContaining({ error: "FILE_TOO_LARGE" }),
+        }),
+      ]),
+    },
+  });
+  expect(project.stories).not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: "STO-OVERSIZED" })]),
+  );
+
+  const healthResponse = await request.get("/api/health");
+  expect(healthResponse.status()).toBe(200);
+  expect(await healthResponse.json()).toMatchObject({
+    ok: true,
+    health: "degraded",
+    projects: [
+      expect.objectContaining({
+        id: "sample-project",
+        canProceed: false,
+        issues: expect.arrayContaining([
+          expect.objectContaining({ code: "invalid_document", entityId: "STO-OVERSIZED" }),
+        ]),
+      }),
+    ],
+  });
+
+  expect((await request.get("/api/projects")).status()).toBe(200);
+});
+
 test("un proyecto con ruta inexistente queda aislado y sus endpoints no derriban el servicio", async ({ page, request }) => {
   const config = JSON.parse(await fs.readFile(configPath, "utf8"));
   config.unshift({
