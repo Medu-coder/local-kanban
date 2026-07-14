@@ -126,7 +126,9 @@ export function StoryDetail({
           <span className="status-chip">{story.coordination.operationalStatus}</span>
         ) : null}
         {story.isBlocked ? <span className="status-chip status-chip--blocked">Blocked</span> : null}
-        {story.isReadyForDeveloping ? <span className="status-chip status-chip--ready">Ready</span> : null}
+        {story.status === "backlog" && story.isReadyForDeveloping ? (
+          <span className="status-chip status-chip--ready">Ready</span>
+        ) : null}
         {story.isDoneValidated ? <span className="status-chip status-chip--validated">Done validado</span> : null}
         <span className="status-chip">{story.executionMode}</span>
         <span className="status-chip">{story.storyType}</span>

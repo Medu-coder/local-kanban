@@ -107,3 +107,4 @@ confirma además que la skill personal sigue enlazada al fichero canónico de es
 - [Plantilla de contrato para AGENTS.md](docs/AGENTS_WORK_CONTRACT_TEMPLATE.md)
 - [Skill canónica](skills/local-kanban/SKILL.md)
 - [Documento de mejoras técnicas](docs/AGENTIC_KANBAN_TECHNICAL_IMPROVEMENTS.md)
+- [Dogfooding y registro de desalineamientos](docs/DOGFOOD_ALIGNMENT_REPORT_2026-07-14.md)
