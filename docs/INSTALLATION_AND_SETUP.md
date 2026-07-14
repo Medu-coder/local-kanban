@@ -283,4 +283,8 @@ local-kanban validate --json
 local-kanban doctor --json
 ```
 
+`--validation` mantiene el formato CSV para compatibilidad. Si un comando contiene comas,
+usa el flag repetible `--validation-command "COMANDO LITERAL"`; al combinar ambos formatos,
+los comandos CSV se ejecutan primero y después los literales en orden de aparición.
+
 La migración reabre los `done` históricos en `testing`: no fabrica evidencia retrospectiva.

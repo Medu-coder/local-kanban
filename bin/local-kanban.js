@@ -34,7 +34,8 @@ Uso:
     ID: slug minúsculo de 1-50 caracteres ([a-z0-9], guiones internos permitidos)
   local-kanban create-epic EPI-ID --title TEXT --objective TEXT [--labels a,b] [--json]
   local-kanban create-story STO-ID --title TEXT --objective TEXT --acceptance a,b
-    --validation COMMAND[,COMMAND] --context FILE[,FILE] [--scope a,b] [--subtasks a,b]
+    [--validation COMMAND[,COMMAND]] [--validation-command COMMAND]... --context FILE[,FILE]
+    [--scope a,b] [--subtasks a,b]
     [--epic EPI-ID] [--hard STO-ID,...] [--related STO-ID,...]
     [--priority low|medium|high] [--risk standard|high] [--rank N] [--json]
   local-kanban next [--limit N] [--json]
@@ -60,7 +61,8 @@ Uso:
     --role orchestrator [--actor ACTOR] [--json]
   local-kanban doctor [--json]
   local-kanban reconcile [ENTITY_ID|--all] [--accept-current --reason TEXT] [--json]
-  local-kanban migrate-legacy --validation COMMAND[,COMMAND] --risk standard|high
+  local-kanban migrate-legacy
+    [--validation COMMAND[,COMMAND]] [--validation-command COMMAND]... --risk standard|high
     --reason TEXT [--apply] [--json]
   local-kanban --help
 `;
@@ -76,13 +78,19 @@ function parseArgs(argv) {
     }
     const [rawKey, inlineValue] = token.slice(2).split("=", 2);
     const key = rawKey.replace(/-([a-z])/gu, (_match, letter) => letter.toUpperCase());
+    let value;
     if (inlineValue !== undefined) {
-      options[key] = inlineValue;
+      value = inlineValue;
     } else if (rest[index + 1] && !rest[index + 1].startsWith("--")) {
-      options[key] = rest[index + 1];
+      value = rest[index + 1];
       index += 1;
     } else {
-      options[key] = true;
+      value = true;
+    }
+    if (key === "validationCommand") {
+      options[key] = [...(options[key] ?? []), value];
+    } else {
+      options[key] = value;
     }
   }
   return { command, options };
@@ -101,6 +109,20 @@ function commaList(value) {
     return [];
   }
   return String(value).split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function validationCommands(options) {
+  const literal = options.validationCommand ?? [];
+  if (literal.some((value) => typeof value !== "string" || !value.trim())) {
+    throw new DomainError(
+      "command_invalid",
+      "--validation-command exige un comando literal no vacío.",
+    );
+  }
+  return [
+    ...commaList(options.validation),
+    ...literal.map((value) => value.trim()),
+  ];
 }
 
 function workflowOptions(options) {
@@ -183,7 +205,7 @@ async function run() {
       objective: options.objective,
       description: options.description,
       acceptance: commaList(options.acceptance),
-      validationCommands: commaList(options.validation),
+      validationCommands: validationCommands(options),
       contextFiles: commaList(options.context),
       scope: commaList(options.scope),
       nonScope: commaList(options.nonScope),
@@ -379,7 +401,7 @@ async function run() {
     const result = await migrateLegacyProjectCommand({
       cwd: process.cwd(),
       configPath: process.env.KANBAN_CONFIG_PATH,
-      validationCommands: commaList(options.validation),
+      validationCommands: validationCommands(options),
       risk: options.risk,
       justification: options.reason,
       apply: Boolean(options.apply),

@@ -274,3 +274,63 @@ test("CLI migrate-legacy mantiene preview byte-identical y apply es idempotente"
     await fixture.cleanup();
   }
 });
+
+test("CLI conserva una validación literal con comas mediante --validation-command", async () => {
+  const fixture = await createProjectFixture();
+  const configPath = path.join(fixture.rootPath, ".config", "projects.json");
+  await fs.mkdir(path.dirname(configPath), { recursive: true });
+  await fs.writeFile(configPath, `${JSON.stringify([fixture.project], null, 2)}\n`, "utf8");
+  await fs.writeFile(path.join(fixture.rootPath, "README.md"), "# Literal validation\n", "utf8");
+  const literalCommand = "node -e \"const values=[1,2]; process.exit(values.length===2?0:1)\"";
+  const runCli = (args) => execFileAsync(process.execPath, [cliPath, ...args, "--json"], {
+    cwd: fixture.rootPath,
+    env: { ...process.env, KANBAN_CONFIG_PATH: configPath },
+  });
+  const gitEnvironment = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "Literal validation",
+    GIT_AUTHOR_EMAIL: "literal@example.test",
+    GIT_COMMITTER_NAME: "Literal validation",
+    GIT_COMMITTER_EMAIL: "literal@example.test",
+  };
+
+  try {
+    await fs.rm(path.join(fixture.rootPath, ".git"), { recursive: true, force: true });
+    await execFileAsync("git", ["init", "-q"], { cwd: fixture.rootPath, env: gitEnvironment });
+    await runCli([
+      "create-story", "STO-LITERAL",
+      "--title", "Validación literal",
+      "--objective", "Conservar y ejecutar una coma dentro del comando",
+      "--acceptance", "Comando ejecutado",
+      "--validation-command", literalCommand,
+      "--context", "README.md",
+      "--subtasks", "Ejecutar validación",
+    ]);
+    const storyPath = path.join(fixture.rootPath, "docs/kanban/stories/STO-LITERAL.md");
+    const stored = matter(await fs.readFile(storyPath, "utf8")).data;
+    assert.deepEqual(stored.validation.commands, [literalCommand]);
+
+    await execFileAsync("git", ["add", "."], { cwd: fixture.rootPath, env: gitEnvironment });
+    await execFileAsync("git", ["commit", "-qm", "add literal validation"], {
+      cwd: fixture.rootPath,
+      env: gitEnvironment,
+    });
+    const claimed = JSON.parse((await runCli([
+      "claim", "STO-LITERAL", "--agent", "literal-agent",
+    ])).stdout);
+    const envelope = [
+      "--attempt-id", claimed.execution.attemptId,
+      "--fencing-token", String(claimed.execution.fencingToken),
+      "--actor", "literal-agent",
+    ];
+    await runCli(["check", "STO-LITERAL", ...envelope, "--subtask", "ejecutar-validacion"]);
+    await runCli(["check", "STO-LITERAL", ...envelope, "--criterion", "comando-ejecutado"]);
+    const validated = JSON.parse((await runCli([
+      "validate", "STO-LITERAL", ...envelope,
+    ])).stdout);
+    assert.deepEqual(validated.results.map((item) => item.command), [literalCommand]);
+    assert.equal(validated.results[0].exitCode, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});

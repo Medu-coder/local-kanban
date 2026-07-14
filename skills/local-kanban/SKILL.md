@@ -47,7 +47,7 @@ Usar este flujo mínimo; la CLI genera internamente IDs, timestamps y claves de 
 ```text
 local-kanban create-epic EPI-... --title "..." --objective "..." --json
 local-kanban create-story STO-... --title "..." --objective "..." \
-  --acceptance "..." --validation "..." --context "..." --json
+  --acceptance "..." --validation-command "..." --context "..." --json
 local-kanban next --json
 local-kanban show STO-... --json
 local-kanban claim STO-... --agent AGENT_ID --json
@@ -66,6 +66,11 @@ local-kanban release STO-... --attempt-id ID --fencing-token N --outcome release
   --summary "Estado" --next-action "Cómo reanudar" --json
 local-kanban reconcile --json
 ```
+
+`--validation COMMAND[,COMMAND]` conserva el formato CSV histórico. Cuando un comando
+contenga comas, usar `--validation-command COMMAND`; el flag es repetible y cada valor se
+conserva literalmente. Si se combinan ambos formatos, primero se ejecutan los comandos CSV
+y después los literales en el orden en que aparecieron.
 
 Crear trabajo nuevo mediante `create-epic` y `create-story`; no generar sus Markdown manualmente. Conservar el `attemptId` y `fencingToken` devueltos por `claim`; toda mutación posterior de ejecución los exige y renueva el lease. No inventarlos ni reutilizarlos en otra historia. Usar `show` para regenerar la cápsula tras resume. Marcar únicamente trabajo realmente terminado con `check`; repetirlo es seguro y no desmarca. Resolver un bloqueo con `resolve` explicando la resolución. `release` exige checkpoint vigente o handoff con resumen y siguiente acción. `validate` sin `STORY_ID` valida globalmente los documentos del proyecto; con `STORY_ID` ejecuta los comandos declarados por la historia, registra evidencia durable vinculada al commit y al intento, y entrega en `testing/verifying`; un fallo también queda auditado con la siguiente acción. Solo el orquestador usa `complete`, después de integrar: el comando vuelve a validar sobre el checkout principal, registra evidencia del commit integrado y después cierra. Retirar el worktree limpio con `worktree-remove` tras el cierre.
 
