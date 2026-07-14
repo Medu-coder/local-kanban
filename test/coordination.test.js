@@ -188,6 +188,17 @@ test("cápsula incluye solo estado operativo y contexto accionable", async () =>
   try {
     const story = createStory({ scope: ["core/**"] });
     const claimed = runtime.claimStory({ storyId: story.id, agentId: "agent-a", now: start });
+    runtime.addBlock({
+      storyId: story.id,
+      attemptId: claimed.attempt.id,
+      fencingToken: claimed.claim.fencingToken,
+      type: "environment",
+      description: "Entorno no disponible",
+      owner: "orchestrator",
+      action: "Restaurar entorno",
+      resumeCondition: "Entorno disponible",
+      now: start,
+    });
     const coordination = runtime.getCoordinationState(story.id, { now: start });
     const capsule = buildOperationalCapsule({
       story,
@@ -198,6 +209,8 @@ test("cápsula incluye solo estado operativo y contexto accionable", async () =>
     assert.equal(capsule.execution.attemptId, claimed.attempt.id);
     assert.equal(capsule.nextAction, "implementar");
     assert.equal(capsule.objective, story.objective);
+    assert.deepEqual(capsule.gates.activeBlockers, ["environment"]);
+    assert.equal(capsule.gates.isReady, false);
     assert.equal("history" in capsule, false);
   } finally {
     runtime.close();

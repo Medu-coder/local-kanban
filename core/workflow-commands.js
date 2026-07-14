@@ -142,8 +142,6 @@ export async function createStoryWorkflow(options) {
       title: subtask,
       done: false,
     })),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   };
   return createStoryCommand({
     project,
@@ -168,8 +166,6 @@ export async function createEpicWorkflow(options) {
     objective: requireText(options.objective, "objective"),
     ...(options.description ? { description: String(options.description).trim() } : {}),
     labels: uniqueItems(options.labels),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   };
   return createEpicCommand({
     project,
@@ -395,11 +391,19 @@ export async function checkStoryWorkflow(options) {
     idempotencyKey: options.idempotencyKey ?? randomUUID(),
   };
   if (options.criterionId) {
+    const criterion = story.acceptance_criteria.find((item) => item.id === options.criterionId);
+    if (criterion?.checked === true) {
+      return { storyId: story.id, revision: story.revision, changed: false, criterion };
+    }
     return toggleStoryCriterionCommand({
       ...common,
       criteriaType: "acceptance",
       criterionId: options.criterionId,
     });
+  }
+  const subtask = (story.subtasks ?? []).find((item) => item.id === options.subtaskId);
+  if (subtask?.done === true) {
+    return { storyId: story.id, revision: story.revision, changed: false, subtask };
   }
   return toggleStorySubtaskCommand({ ...common, subtaskId: options.subtaskId });
 }
@@ -574,10 +578,18 @@ export async function completeStoryWorkflow(options) {
   } finally {
     runtime.close();
   }
+  const integratedValidation = await validateStoryWorkflow({
+    ...options,
+    project,
+    cwd: paths.rootPath,
+    actor: envelope.actor,
+    summary: options.summary ?? "Validación integrada superada por el orquestador.",
+  });
+  const integratedStory = (await readCanonicalStory(paths, story.id)).entity;
   const result = await transitionStoryCommand({
     project,
     storyId: story.id,
-    expectedRevision: story.revision,
+    expectedRevision: integratedStory.revision,
     nextStatus: "done",
     actor: envelope.actor,
     actorRole: "orchestrator",
@@ -586,7 +598,7 @@ export async function completeStoryWorkflow(options) {
   const releaseRuntime = openRuntime(paths.rootPath);
   try {
     const released = releaseRuntime.releaseClaim({ ...envelope, outcome: "completed" });
-    return { ...result, released };
+    return { ...result, integratedValidation: integratedValidation.evidence, released };
   } finally {
     releaseRuntime.close();
   }

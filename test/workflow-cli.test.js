@@ -304,6 +304,10 @@ test("CLI cubre planificación completa sin editar Markdown manualmente", async 
     await git(worktree.path, ["add", "implemented.txt"]);
     await git(worktree.path, ["commit", "-qm", "implement"]);
     await runCli(["check", "STO-001", ...envelope, "--subtask", "implementar"], rootPath, configPath);
+    const repeatedCheck = JSON.parse(
+      (await runCli(["check", "STO-001", ...envelope, "--subtask", "implementar"], rootPath, configPath)).stdout,
+    );
+    assert.equal(repeatedCheck.changed, false);
     await runCli(["check", "STO-001", ...envelope, "--criterion", "resultado-observable"], rootPath, configPath);
     const blocked = JSON.parse((await runCli([
       "block", "STO-001", ...envelope,
@@ -313,10 +317,14 @@ test("CLI cubre planificación completa sin editar Markdown manualmente", async 
     await runCli(["resolve", "STO-001", ...envelope, "--block-id", blocked.block.id], rootPath, configPath);
     await runCli(["checkpoint", "STO-001", ...envelope, "--summary", "Implementación lista"], rootPath, configPath);
     await runCli(["validate", "STO-001", ...envelope], worktree.path, configPath);
+    const specialistCommit = (await git(worktree.path, ["rev-parse", "HEAD"])).stdout.trim();
+    await git(rootPath, ["cherry-pick", specialistCommit]);
+    const integratedCommit = (await git(rootPath, ["rev-parse", "HEAD"])).stdout.trim();
     const completed = JSON.parse((await runCli([
       "complete", "STO-001", ...envelope, "--role", "orchestrator", "--actor", "orchestrator",
     ], rootPath, configPath)).stdout);
     assert.equal(completed.status, "done");
+    assert.equal(completed.integratedValidation[0].commit, integratedCommit);
     const shown = JSON.parse((await runCli(["show", "STO-001", "--json"], rootPath, configPath)).stdout);
     assert.equal(shown.story.status, "done");
     assert.equal(shown.execution.operationalStatus, "unclaimed");

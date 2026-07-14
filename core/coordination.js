@@ -95,6 +95,13 @@ export function buildOperationalCapsule({ story, coordination, gates = {}, nextA
   const attempt = coordination?.attempt ?? null;
   const checkpoint = coordination?.checkpoint ?? null;
   const blocks = coordination?.blocks ?? [];
+  const operationalBlockTypes = blocks.map((block) => block.type);
+  const effectiveGates = {
+    ...gates,
+    activeBlockers: [...new Set([...(gates.activeBlockers ?? []), ...operationalBlockTypes])],
+    ...(Object.hasOwn(gates, "isReady") ? { isReady: gates.isReady && blocks.length === 0 } : {}),
+    ...(Object.hasOwn(gates, "isDone") ? { isDone: gates.isDone && blocks.length === 0 } : {}),
+  };
   return {
     story: {
       id: story.id,
@@ -116,7 +123,7 @@ export function buildOperationalCapsule({ story, coordination, gates = {}, nextA
     scope: story.scope ?? [],
     contextFiles: story.context_files ?? [],
     validation: story.validation?.commands ?? [],
-    gates,
+    gates: effectiveGates,
     blocks: blocks.map((block) => ({
       type: block.type,
       owner: block.owner,
