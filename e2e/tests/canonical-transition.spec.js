@@ -258,10 +258,15 @@ test("la UI no suplanta checks agénticos ni acepta planificación incompleta", 
 });
 
 test("la UI no modifica planificación protegida por un claim activo", async ({ request }) => {
-  const storyPath = getStoryPath("STO-900");
-  const associatedStory = matter(await fs.readFile(storyPath, "utf8"));
-  associatedStory.data.epic = "EPI-900";
-  await fs.writeFile(storyPath, matter.stringify(associatedStory.content, associatedStory.data), "utf8");
+  const associated = await request.post("/api/projects/sample-project/stories/STO-900/move", {
+    data: {
+      status: "backlog",
+      epicId: "EPI-900",
+      expectedRevision: 1,
+      idempotencyKey: "associate-before-claim-1",
+    },
+  });
+  expect(associated.status()).toBe(200);
 
   const runtime = openRuntime(projectRoot);
   try {
@@ -286,7 +291,7 @@ test("la UI no modifica planificación protegida por un claim activo", async ({ 
     doneCriteria: [{ id: "http-tested", label: "HTTP validado", kind: "manual", checked: false }],
     subtasks: [{ title: "Transicionar", done: false }],
     body: "Historia canónica de integración.",
-    expectedRevision: 1,
+    expectedRevision: 2,
     idempotencyKey: "active-claim-edit-1",
   };
   const response = await request.put("/api/projects/sample-project/stories/STO-900", { data: update });

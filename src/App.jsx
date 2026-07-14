@@ -20,6 +20,7 @@ import { deriveEpicId, deriveStoryId } from "./lib/story";
 import { EpicEditor } from "./components/EpicEditor";
 import { EpicManager } from "./components/EpicManager";
 import { EpicDetail } from "./components/EpicDetail";
+import { DegradationPanel } from "./components/DegradationPanel";
 
 const setupSteps = [
   "Añade tus proyectos en config/projects.json con rootPath y docsPath.",
@@ -89,6 +90,9 @@ export default function App() {
   const [rightSidebarWidth, setRightSidebarWidth] = useState(420);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const [density, setDensity] = useState(loadInitialDensity);
+  const [syncState, setSyncState] = useState("connecting");
+  const [lastSuccessfulSyncAt, setLastSuccessfulSyncAt] = useState(null);
+  const [sseGeneration, setSseGeneration] = useState(0);
   const storyEditorSubmitRef = useRef(null);
   const epicEditorSubmitRef = useRef(null);
   const pendingEditorActionRef = useRef(null);
@@ -114,6 +118,7 @@ export default function App() {
         }
 
         setData(payload);
+        setLastSuccessfulSyncAt(new Date());
         const deepLink = initialDeepLinkRef.current;
         const linkedProject = payload.projects.find((project) => project.id === deepLink.get("project"));
         const initialProject = linkedProject ?? payload.projects[0] ?? null;
@@ -147,6 +152,11 @@ export default function App() {
     : selectedProject?.health === "unavailable"
       ? "No disponible"
       : "Sincronizado";
+  const visibleHealthLabel = syncState === "live"
+    ? projectHealthLabel
+    : syncState === "retrying"
+      ? "Reconectando…"
+      : "Conectando…";
   const liveSelectedStory =
     selectedStory && selectedProject
       ? selectedProject.stories.find((story) => story.id === selectedStory.id) ?? selectedStory
@@ -267,6 +277,7 @@ export default function App() {
         startTransition(() => {
           setData(payload);
         });
+        setLastSuccessfulSyncAt(new Date());
       } while (refreshQueuedRef.current);
     };
 
@@ -292,6 +303,15 @@ export default function App() {
   useEffect(() => {
     const events = new EventSource("/api/events");
 
+    setSyncState("connecting");
+    events.onopen = () => {
+      setSyncState("live");
+      setLastSuccessfulSyncAt(new Date());
+    };
+    events.onerror = () => {
+      setSyncState("retrying");
+    };
+
     events.onmessage = (event) => {
       if (event.data !== "refresh") {
         return;
@@ -303,7 +323,7 @@ export default function App() {
     return () => {
       events.close();
     };
-  }, []);
+  }, [sseGeneration]);
 
   async function handleSaveStory(payload) {
     if (!selectedProject) {
@@ -833,7 +853,7 @@ export default function App() {
               <div className="topbar__metric topbar__metric--status">
                 <span className={`sync-indicator ${isPending ? "is-busy" : ""}`} />
                 <div>
-                  <strong>{isLoading ? "Cargando…" : isPending ? "Sincronizando…" : projectHealthLabel}</strong>
+                  <strong>{isLoading ? "Cargando…" : isPending ? "Sincronizando…" : visibleHealthLabel}</strong>
                   <span>Estado local</span>
                 </div>
               </div>
@@ -841,6 +861,29 @@ export default function App() {
           </section>
 
           {error ? <div className="error-banner">{error}</div> : null}
+
+          {syncState !== "live" ? (
+            <div className="warning-banner sync-warning" data-testid="sync-degraded">
+              <div>
+                <strong>Actualización en tiempo real interrumpida.</strong>
+                <span>
+                  Los datos pueden estar obsoletos. Última sincronización correcta: {lastSuccessfulSyncAt
+                    ? lastSuccessfulSyncAt.toLocaleString()
+                    : "todavía no confirmada"}.
+                </span>
+              </div>
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => {
+                  void refreshProjects({ suppressError: true });
+                  setSseGeneration((value) => value + 1);
+                }}
+              >
+                Reintentar ahora
+              </button>
+            </div>
+          ) : null}
 
           {selectedProject?.health === "unavailable" ? (
             <div className="error-banner" data-testid="project-unavailable">
@@ -850,10 +893,28 @@ export default function App() {
           ) : null}
 
           {selectedProject?.health === "degraded" ? (
-            <div className="warning-banner" data-testid="project-degraded">
-              <strong>Proyecto degradado.</strong> Hay {selectedProject.quarantines.length} documento(s)
-              en cuarentena. Revísalos antes de confiar en el flujo agéntico.
-            </div>
+            <DegradationPanel
+              project={selectedProject}
+              onOpenEntity={({ id, type }) => {
+                if (type === "story") {
+                  const story = selectedProject.stories.find((item) => item.id === id);
+                  if (story) {
+                    setSelectedStory(story);
+                    setSelectedEpic(null);
+                    setSidePanelMode("detail");
+                    setRightSidebarCollapsed(false);
+                  }
+                } else {
+                  const epic = selectedProject.epics.find((item) => item.id === id);
+                  if (epic) {
+                    setSelectedEpic(epic);
+                    setSelectedStory(null);
+                    setSidePanelMode("epic-detail");
+                    setRightSidebarCollapsed(false);
+                  }
+                }
+              }}
+            />
           ) : null}
 
           {selectedProject && selectedProject.health !== "unavailable" ? (

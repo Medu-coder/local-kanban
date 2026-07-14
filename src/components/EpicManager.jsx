@@ -26,6 +26,7 @@ export function EpicManager({ project, onCreateEpic, onEditEpic, onClose }) {
             const hasActiveWork = project.stories.some(
               (story) => story.epicId === epic.id && story.coordination?.claim,
             );
+            const cannotEdit = hasActiveWork || Boolean(epic.quarantine);
             return (
               <article key={epic.id} className="epic-manager-card">
                 <div className="epic-manager-card__header">
@@ -44,8 +45,12 @@ export function EpicManager({ project, onCreateEpic, onEditEpic, onClose }) {
                     className="ghost-button epic-manager-card__edit"
                     type="button"
                     onClick={() => onEditEpic(epic)}
-                    disabled={hasActiveWork}
-                    title={hasActiveWork ? "La épica contiene trabajo reclamado" : "Editar planificación de la épica"}
+                    disabled={cannotEdit}
+                    title={epic.quarantine
+                      ? "La épica está en cuarentena; abre Atención requerida"
+                      : hasActiveWork
+                        ? "La épica contiene trabajo reclamado"
+                        : "Editar planificación de la épica"}
                   >
                     Editar
                   </button>

@@ -14,6 +14,8 @@ import {
   updateStoryCommand,
 } from "../core/entity-commands.js";
 import { readCanonicalEpic, readCanonicalStory } from "../core/entity-repository.js";
+import { explainProblemOperation, explainQuarantine } from "../core/degradation.js";
+import { deriveOperationalGuidance } from "../core/coordination.js";
 import { DomainError } from "../core/errors.js";
 import { FilesystemSafetyError } from "../core/paths.js";
 import { reconcileProjectDocuments } from "../core/reconciliation.js";
@@ -290,6 +292,22 @@ function enrichStories(project, stories) {
       ((story.subtasks ?? []).every((subtask) => subtask.done) &&
         (story.evidence?.length ?? 0) > 0 &&
         (story.risk !== "high" || hasIndependentReview));
+    const isReadyForDeveloping = !story.quarantine && !isBlocked && readyCriteriaProgress.isComplete;
+    const isDoneValidated =
+      !story.quarantine && !isBlocked && doneCriteriaProgress.isComplete && canonicalDoneValidated;
+    const guidance = story.quarantine
+      ? {
+          summary: "Resolver la cuarentena antes de continuar.",
+          command: `local-kanban reconcile ${story.id} --json`,
+          why: "El documento no es una fuente canónica fiable.",
+          authority: "orchestrator",
+          canProceed: false,
+        }
+      : deriveOperationalGuidance({
+          story: { id: story.id, status: story.status, risk: story.risk },
+          coordination: story.coordination,
+          gates: { isReady: isReadyForDeveloping, isDone: isDoneValidated },
+        });
 
     return {
       ...story,
@@ -304,9 +322,9 @@ function enrichStories(project, stories) {
       readyCriteriaProgress,
       doneCriteriaProgress,
       isBlocked,
-      isReadyForDeveloping: !story.quarantine && !isBlocked && readyCriteriaProgress.isComplete,
-      isDoneValidated:
-        !story.quarantine && !isBlocked && doneCriteriaProgress.isComplete && canonicalDoneValidated,
+      isReadyForDeveloping,
+      isDoneValidated,
+      guidance,
     };
   });
 }
@@ -586,6 +604,7 @@ async function loadProjects() {
         const runtime = openRuntime(project.rootPath);
         let coordinationByStory;
         let quarantines;
+        let problemOperations;
         try {
           await reconcileProjectDocuments(canonicalProject(project), runtime, { actor: "ui-watcher" });
           coordinationByStory = new Map(
@@ -594,6 +613,7 @@ async function loadProjects() {
           quarantines = new Map(
             runtime.listQuarantines().map((item) => [`${item.entityType}:${item.entityId}`, item]),
           );
+          problemOperations = runtime.listProblemOperations();
         } finally {
           runtime.close();
         }
@@ -601,8 +621,42 @@ async function loadProjects() {
           ...story,
           coordination: coordinationByStory.get(story.id),
           quarantine: quarantines.get(`story:${story.id}`) ?? null,
+          quarantineExplanation: quarantines.has(`story:${story.id}`)
+            ? explainQuarantine(quarantines.get(`story:${story.id}`))
+            : null,
+          dataReliability: quarantines.get(`story:${story.id}`)?.reason === "invalid_document"
+            ? "untrusted"
+            : "canonical",
         }));
         const storiesWithEpic = enrichStories({ ...project, epics }, operationalStories);
+        const quarantineIssues = [...quarantines.values()].map(explainQuarantine);
+        const operationIssues = problemOperations.map(explainProblemOperation);
+        const gateIssues = storiesWithEpic
+          .filter((story) => story.status === "done" && !story.isDoneValidated)
+          .map((story) => ({
+            id: `done-gate:${story.id}`,
+            severity: "fail",
+            code: "done_gate_incomplete",
+            scope: "story",
+            entityType: "story",
+            entityId: story.id,
+            summary: "La historia figura como done sin satisfacer su gate canónico.",
+            cause: "Falta aceptación, subtareas, evidencia válida o revisión independiente.",
+            impact: "El cierre no es verificable y no debe considerarse una entrega válida.",
+            action: "Reabre la verificación mediante la CLI y completa los gates sin fabricar evidencia.",
+            command: `local-kanban show ${story.id} --json`,
+            verification: "show informa gates.isDone=true y doctor vuelve a healthy.",
+            details: {
+              acceptance: story.doneCriteriaProgress,
+              subtasks: {
+                completed: story.subtasks.filter((subtask) => subtask.done).length,
+                total: story.subtasks.length,
+              },
+              evidenceCount: story.evidence.length,
+              risk: story.risk,
+            },
+          }));
+        const issues = [...quarantineIssues, ...operationIssues, ...gateIssues];
 
         const storyCountByEpic = storiesWithEpic.reduce((acc, story) => {
           const key = normalizeId(story.epicId ?? "none");
@@ -627,6 +681,13 @@ async function loadProjects() {
 
         const hydratedEpics = epics.map((epic) => ({
           ...epic,
+          quarantine: quarantines.get(`epic:${epic.id}`) ?? null,
+          quarantineExplanation: quarantines.has(`epic:${epic.id}`)
+            ? explainQuarantine(quarantines.get(`epic:${epic.id}`))
+            : null,
+          dataReliability: quarantines.get(`epic:${epic.id}`)?.reason === "invalid_document"
+            ? "untrusted"
+            : "canonical",
           storyCount: storyCountByEpic[normalizeId(epic.id)] ?? 0,
           statusCounts: statusCountByEpic[normalizeId(epic.id)] ?? {
             backlog: 0,
@@ -665,8 +726,18 @@ async function loadProjects() {
           docsPath: project.docsPath ?? "docs/kanban",
           epics: hydratedEpics,
           stories: storiesWithEpic,
-          health: quarantines.size > 0 ? "degraded" : "healthy",
+          health: issues.length > 0 ? "degraded" : "healthy",
           quarantines: [...quarantines.values()],
+          degradations: {
+            health: issues.length > 0 ? "degraded" : "healthy",
+            canProceed: issues.length === 0,
+            issueCount: issues.length,
+            issues,
+            nextAction: issues[0]?.action ?? "Continuar con el flujo canónico.",
+            verification: issues.length > 0
+              ? "Resuelve cada issue y confirma local-kanban doctor health=healthy."
+              : "No hay degradaciones activas.",
+          },
           stats: statuses.reduce((acc, status) => {
             acc[status] = storiesWithEpic.filter((story) => story.status === status).length;
             return acc;
@@ -682,6 +753,26 @@ async function loadProjects() {
           stories: [],
           health: "unavailable",
           quarantines: [],
+          degradations: {
+            health: "unavailable",
+            canProceed: false,
+            issueCount: 1,
+            issues: [{
+              id: `unavailable:${project.id}`,
+              severity: "fail",
+              code: error?.code ?? "project_unavailable",
+              scope: "project",
+              summary: "No se puede leer el proyecto configurado.",
+              cause: error instanceof Error ? error.message : String(error),
+              impact: "La UI y los agentes no pueden verificar ni mutar este proyecto.",
+              action: "Corrige rootPath/permisos y vuelve a ejecutar local-kanban doctor.",
+              command: "local-kanban doctor --json",
+              verification: "El proyecto vuelve a aparecer healthy y con datos actuales.",
+              details: { rootPath: project.rootPath },
+            }],
+            nextAction: "Corrige rootPath/permisos y vuelve a ejecutar local-kanban doctor.",
+            verification: "El proyecto vuelve a aparecer healthy y con datos actuales.",
+          },
           stats: Object.fromEntries(statuses.map((status) => [status, 0])),
           availabilityError: {
             code: error?.code ?? "project_unavailable",
@@ -986,6 +1077,21 @@ function assertCompleteEpicContract(rawPayload) {
 }
 
 function assertUiPlanningMutationAllowed(project, story) {
+  if (story.quarantine) {
+    const issue = explainQuarantine(story.quarantine);
+    throw new DomainError(
+      "entity_quarantined",
+      "La entidad está en cuarentena y no se puede modificar.",
+      {
+        details: {
+          degradation: issue,
+          nextAction: issue.action,
+          command: issue.command,
+        },
+        status: 409,
+      },
+    );
+  }
   if (story.status !== "backlog") {
     throw new DomainError(
       "agent_workflow_required",
@@ -1249,6 +1355,14 @@ app.put("/api/projects/:projectId/epics/:epicId", async (req, res) => {
     if (existing.schemaVersion !== 1) {
       return sendLegacyReadOnly(res, "epic");
     }
+    if (existing.quarantine) {
+      const issue = explainQuarantine(existing.quarantine);
+      throw new DomainError(
+        "entity_quarantined",
+        "La épica está en cuarentena y no se puede modificar.",
+        { details: { degradation: issue, nextAction: issue.action, command: issue.command }, status: 409 },
+      );
+    }
     const activeStory = project.stories.find(
       (story) => story.epicId === epicId && story.coordination?.claim,
     );
@@ -1375,12 +1489,26 @@ app.post("/api/projects/:projectId/stories/:storyId/coordination/release", async
   if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
   const runtime = openRuntime(project.rootPath);
   try {
+    const summary = String(req.body?.summary ?? "").trim();
+    const nextAction = String(req.body?.nextAction ?? "").trim();
+    if (!summary || !nextAction) {
+      throw new DomainError(
+        "handoff_required",
+        "Abandonar un intento exige resumen y siguiente acción.",
+        {
+          details: { nextAction: "Describe el estado y cómo reanudar antes de liberar el claim." },
+          status: 400,
+        },
+      );
+    }
     const result = runtime.releaseClaim({
       storyId: req.params.storyId,
       attemptId: req.body?.attemptId,
       fencingToken: req.body?.fencingToken,
       outcome: req.body?.outcome ?? "abandoned",
       actor: req.body?.actor ?? "human-ui",
+      summary,
+      nextAction,
     });
     scheduleBroadcast();
     return res.json({ ok: true, result });
@@ -1396,12 +1524,22 @@ app.post("/api/projects/:projectId/stories/:storyId/blocks/:blockId/resolve", as
   if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
   const runtime = openRuntime(project.rootPath);
   try {
+    const resolution = String(req.body?.resolution ?? "").trim();
+    if (!resolution) {
+      throw new DomainError(
+        "resolution_required",
+        "Resolver un bloqueo exige explicar la resolución.",
+        { details: { nextAction: "Describe qué cambió y por qué se cumple la condición de reanudación." }, status: 400 },
+      );
+    }
     const result = runtime.resolveBlock({
       storyId: req.params.storyId,
       blockId: req.params.blockId,
       attemptId: req.body?.attemptId,
       fencingToken: req.body?.fencingToken,
       actor: req.body?.actor ?? "human-ui",
+      resolution,
+      evidence: req.body?.evidence,
     });
     scheduleBroadcast();
     return res.json({ ok: true, result });
@@ -1418,20 +1556,24 @@ app.use(express.static(distPath));
 
 app.get("/api/health", async (_req, res) => {
   try {
-    const projects = await readJson(configPath);
-    if (!Array.isArray(projects)) {
-      throw new TypeError("La configuración de proyectos debe ser un array.");
-    }
     await fs.access(path.join(distPath, "index.html"));
-    const availability = await Promise.allSettled(
-      projects.map((project) => fs.access(project.rootPath)),
-    );
-    const unavailableProjects = availability.filter((result) => result.status === "rejected").length;
+    const projects = await loadProjects();
+    const degradedProjects = projects.filter((project) => project.health !== "healthy");
+    const unavailableProjects = projects.filter((project) => project.health === "unavailable").length;
     return res.json({
       ok: true,
-      health: unavailableProjects > 0 ? "degraded" : "healthy",
+      health: degradedProjects.length > 0 ? "degraded" : "healthy",
       configuredProjects: projects.length,
       unavailableProjects,
+      degradedProjects: degradedProjects.length,
+      projects: projects.map((project) => ({
+        id: project.id,
+        health: project.health,
+        canProceed: project.degradations.canProceed,
+        issueCount: project.degradations.issueCount,
+        nextAction: project.degradations.nextAction,
+        issues: project.degradations.issues,
+      })),
     });
   } catch (error) {
     return res.status(503).json({

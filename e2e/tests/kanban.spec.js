@@ -54,9 +54,21 @@ test("confirmación explícita protege el abandono de un intento", async ({ page
   await abandonButton.click();
   await expect(abandonButton).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
+  let promptIndex = 0;
+  const acceptHandoff = async (dialog) => {
+    if (dialog.type() === "confirm") {
+      await dialog.accept();
+      return;
+    }
+    promptIndex += 1;
+    await dialog.accept(promptIndex === 1
+      ? "Intento abandonado durante prueba E2E"
+      : "Reclamar la historia y continuar desde el último checkpoint");
+  };
+  page.on("dialog", acceptHandoff);
   await abandonButton.click();
   await expect(abandonButton).toHaveCount(0);
+  page.off("dialog", acceptHandoff);
 });
 
 test("abre una historia mediante deep link estable", async ({ page }) => {

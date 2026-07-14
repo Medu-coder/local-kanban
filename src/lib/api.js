@@ -35,7 +35,11 @@ function mutationHeaders(payload) {
 async function handleJson(response, fallback) {
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    throw new ApiError(payload.message ?? payload.detail ?? payload.error ?? fallback, {
+    const base = payload.message ?? payload.detail ?? payload.error ?? fallback;
+    const nextAction = payload.details?.nextAction;
+    const command = payload.details?.command;
+    const message = [base, nextAction, command ? `Comando: ${command}` : null].filter(Boolean).join(" ");
+    throw new ApiError(message, {
       status: response.status,
       code: payload.code ?? (response.status === 409 ? "conflict" : "request_failed"),
       details: payload.details,

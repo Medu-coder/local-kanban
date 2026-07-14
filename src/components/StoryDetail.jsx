@@ -83,16 +83,30 @@ export function StoryDetail({
   onOperationalChange,
 }) {
   const [timeline, setTimeline] = useState(null);
+  const [timelineStatus, setTimelineStatus] = useState("loading");
+  const [timelineError, setTimelineError] = useState("");
   const [timelineRevision, setTimelineRevision] = useState(0);
   const [operationalError, setOperationalError] = useState("");
 
   useEffect(() => {
     let active = true;
     setTimeline(null);
+    setTimelineStatus("loading");
+    setTimelineError("");
     if (story) {
       fetchStoryTimeline(story.projectId, story.id)
-        .then((result) => { if (active) setTimeline(result); })
-        .catch((error) => { if (active) setOperationalError(error.message); });
+        .then((result) => {
+          if (active) {
+            setTimeline(result);
+            setTimelineStatus("loaded");
+          }
+        })
+        .catch((error) => {
+          if (active) {
+            setTimelineError(error.message);
+            setTimelineStatus("error");
+          }
+        });
     }
     return () => { active = false; };
   }, [story?.id, story?.projectId, story?.revision, timelineRevision]);
@@ -107,22 +121,12 @@ export function StoryDetail({
     !story.coordination?.claim;
   const canCheckInUi = canPlan && story.executionMode === "human";
   const canMarkReadiness = canPlan;
-  const nextAction = story.quarantine
-    ? "Resolver la cuarentena antes de continuar."
-    : story.coordination?.claim?.status === "stale"
-      ? `Recuperar o liberar el intento ${story.coordination.attempt?.id ?? "activo"}.`
-      : story.coordination?.blocks?.length
-        ? story.coordination.blocks[0].action
-        : story.coordination?.checkpoint?.payload?.nextAction
-          ?? (story.coordination?.claim
-            ? "Continuar mediante la CLI con el attemptId y fencing token vigentes."
-            : story.status === "backlog" && story.isReadyForDeveloping
-              ? `local-kanban claim ${story.id}`
-              : story.status === "backlog"
-                ? "Completar la Definition of Ready antes de reclamar."
-                : story.status === "testing"
-                  ? "Revisar la entrega y completar como orquestador."
-                  : "Consultar local-kanban next para la siguiente acción.");
+  const guidance = story.guidance ?? {
+    summary: "Consulta local-kanban show para determinar la siguiente acción.",
+    command: `local-kanban show ${story.id} --json`,
+    why: "No hay una guía canónica disponible en esta versión.",
+    canProceed: false,
+  };
 
   return (
     <aside className="detail-panel" onClick={(event) => event.stopPropagation()} data-testid="story-detail-panel">
@@ -170,7 +174,9 @@ export function StoryDetail({
 
       <section className="agent-next-action" data-testid="story-next-action">
         <span>Siguiente acción canónica</span>
-        <strong>{nextAction}</strong>
+        <strong>{guidance.summary}</strong>
+        <small>{guidance.why}</small>
+        {guidance.command ? <code>{guidance.command}</code> : null}
       </section>
 
       {story.executionMode !== "human" ? (
@@ -243,11 +249,17 @@ export function StoryDetail({
                       if (!window.confirm(`Confirma que se cumple la condición de reanudación: ${block.resumeCondition}`)) {
                         return;
                       }
+                      const resolution = window.prompt("Describe cómo se resolvió el bloqueo y qué cambió:");
+                      if (!resolution?.trim()) {
+                        setOperationalError("La resolución es obligatoria; el bloqueo sigue abierto.");
+                        return;
+                      }
                       try {
                         setOperationalError("");
                         await resolveStoryBlock(story.projectId, story.id, block.id, {
                           attemptId: story.coordination.attempt.id,
                           fencingToken: story.coordination.claim.fencingToken,
+                          resolution: resolution.trim(),
                         });
                         await onOperationalChange?.();
                         setTimelineRevision((revision) => revision + 1);
@@ -269,12 +281,20 @@ export function StoryDetail({
                 if (!window.confirm("Esto abandonará el intento activo y liberará su claim. ¿Quieres continuar?")) {
                   return;
                 }
+                const summary = window.prompt("Resume el estado exacto que queda al abandonar el intento:");
+                const nextAction = window.prompt("Indica la siguiente acción concreta para reanudar:");
+                if (!summary?.trim() || !nextAction?.trim()) {
+                  setOperationalError("Resumen y siguiente acción son obligatorios; el intento sigue activo.");
+                  return;
+                }
                 try {
                   setOperationalError("");
                   await releaseStoryClaim(story.projectId, story.id, {
                     attemptId: story.coordination.attempt.id,
                     fencingToken: story.coordination.claim.fencingToken,
                     outcome: "abandoned",
+                    summary: summary.trim(),
+                    nextAction: nextAction.trim(),
                   });
                   await onOperationalChange?.();
                   setTimelineRevision((revision) => revision + 1);
@@ -288,7 +308,16 @@ export function StoryDetail({
 
       <section className="detail-section" data-testid="story-timeline">
         <h3>Timeline</h3>
-        {timeline?.events?.length ? (
+        {timelineStatus === "loading" ? <p className="muted">Cargando eventos operativos…</p> : null}
+        {timelineStatus === "error" ? (
+          <div className="error-banner">
+            <strong>No se pudo verificar el timeline.</strong> {timelineError}
+            <button className="ghost-button" type="button" onClick={() => setTimelineRevision((value) => value + 1)}>
+              Reintentar
+            </button>
+          </div>
+        ) : null}
+        {timelineStatus === "loaded" && timeline?.events?.length ? (
           <ol className="subtask-list">
             {timeline.events.map((event) => (
               <li key={event.id}>
@@ -296,13 +325,19 @@ export function StoryDetail({
               </li>
             ))}
           </ol>
-        ) : <p className="muted">Sin eventos operativos.</p>}
+        ) : null}
+        {timelineStatus === "loaded" && !timeline?.events?.length ? (
+          <p className="muted">Timeline verificado: no hay eventos operativos.</p>
+        ) : null}
       </section>
 
       {story.quarantine ? (
         <section className="detail-section" data-testid="story-quarantine">
-          <h3>Conflicto en cuarentena</h3>
-          <p className="detail-copy">{story.quarantine.reason}</p>
+          <h3>Documento no canónico</h3>
+          <p className="detail-copy"><strong>Causa:</strong> {story.quarantineExplanation?.cause}</p>
+          <p className="detail-copy"><strong>Impacto:</strong> {story.quarantineExplanation?.impact}</p>
+          <p className="detail-copy"><strong>Acción:</strong> {story.quarantineExplanation?.action}</p>
+          <code className="file-chip">{story.quarantineExplanation?.command}</code>
         </section>
       ) : null}
 

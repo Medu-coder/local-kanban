@@ -60,7 +60,8 @@ test("una historia en cuarentena nunca se presenta como ready", async ({ page })
 
   await page.reload();
   const card = page.getByTestId("story-card-STO-001");
-  await expect(page.getByTestId("project-degraded")).toContainText("1 documento(s)");
+  await expect(page.getByTestId("project-degraded")).toContainText("2 garantía(s)");
+  await expect(page.getByTestId("project-degraded")).toContainText("El documento no cumple el contrato canónico");
   await expect(page.getByText("Requiere atención")).toBeVisible();
   await expect(card).toContainText("Cuarentena");
   await expect(card).not.toContainText("Ready");

@@ -1,4 +1,5 @@
 export function StoryCard({ story, onSelect, onDragStart, onDragEnd, canDrag }) {
+  const isUntrusted = story.dataReliability === "untrusted";
   const doneSubtasks = story.subtasks.filter((subtask) =>
     typeof subtask === "object" ? subtask.done : false
   ).length;
@@ -33,7 +34,9 @@ export function StoryCard({ story, onSelect, onDragStart, onDragEnd, canDrag }) 
     >
       <div className="story-card__top">
         <span className="story-card__key">{story.id}</span>
-        <span className={`priority-badge priority-${story.priority}`}>{story.priority}</span>
+        {isUntrusted
+          ? <span className="priority-badge">datos no fiables</span>
+          : <span className={`priority-badge priority-${story.priority}`}>{story.priority}</span>}
       </div>
 
       <h3>{story.title}</h3>
@@ -54,7 +57,9 @@ export function StoryCard({ story, onSelect, onDragStart, onDragEnd, canDrag }) 
         {story.isDoneValidated ? <span className="status-chip status-chip--validated">Done validado</span> : null}
       </div>
 
-      <div className="story-card__footer">
+      {isUntrusted ? (
+        <p className="agent-policy-note">No se muestran estado, owner ni progreso como hechos hasta reconciliar.</p>
+      ) : <div className="story-card__footer">
         <div className="story-card__meta-group">
           <span className="story-card__meta-label">Owner</span>
           <strong className="story-card__meta-value story-card__meta-value--owner">{owner}</strong>
@@ -65,7 +70,7 @@ export function StoryCard({ story, onSelect, onDragStart, onDragEnd, canDrag }) 
             {doneSubtasks}/{story.subtasks.length || 0}
           </strong>
         </div>
-      </div>
+      </div>}
     </article>
   );
 }

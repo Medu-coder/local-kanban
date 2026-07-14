@@ -74,6 +74,7 @@ export function ProjectSidebar({
             const isActive = project.id === selectedProjectId;
             const totalStories = project.stories.length;
             const isUnavailable = project.health === "unavailable";
+            const isDegraded = project.health === "degraded";
 
             return (
               <button
@@ -84,7 +85,11 @@ export function ProjectSidebar({
               >
                 <span className="project-list__name">{project.name}</span>
                 <span className="project-list__meta">
-                  {isUnavailable ? "Ruta local no disponible" : "Tablero local conectado a Markdown"}
+                  {isUnavailable
+                    ? "No disponible · abre el diagnóstico"
+                    : isDegraded
+                      ? `${project.degradations?.issueCount ?? 0} garantía(s) requieren atención`
+                      : "Canónico · sincronización verificada"}
                 </span>
                 <span className="project-list__stats" aria-hidden="true">
                   <span className="project-list__stat">

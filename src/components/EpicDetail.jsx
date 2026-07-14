@@ -17,6 +17,7 @@ export function EpicDetail({ epic, stories, onClose, onEdit, onCreateStory }) {
     done: 0,
   };
   const hasActiveWork = stories.some((story) => story.coordination?.claim);
+  const cannotEdit = hasActiveWork || Boolean(epic.quarantine);
 
   return (
     <aside className="detail-panel" onClick={(event) => event.stopPropagation()} data-testid="epic-detail-panel">
@@ -30,8 +31,12 @@ export function EpicDetail({ epic, stories, onClose, onEdit, onCreateStory }) {
             className="ghost-button"
             type="button"
             onClick={() => onEdit(epic)}
-            disabled={hasActiveWork}
-            title={hasActiveWork ? "La épica contiene trabajo reclamado" : "Editar planificación de la épica"}
+            disabled={cannotEdit}
+            title={epic.quarantine
+              ? "La épica está en cuarentena; abre Atención requerida"
+              : hasActiveWork
+                ? "La épica contiene trabajo reclamado"
+                : "Editar planificación de la épica"}
           >
             Editar
           </button>
@@ -40,6 +45,12 @@ export function EpicDetail({ epic, stories, onClose, onEdit, onCreateStory }) {
           </button>
         </div>
       </div>
+
+      {epic.quarantine ? (
+        <p className="agent-policy-note">
+          Esta épica no es fiable ni editable hasta reconciliar su documento. Consulta Atención requerida.
+        </p>
+      ) : null}
 
       <section className="detail-section">
         <div className="epic-progress-card">
