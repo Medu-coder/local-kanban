@@ -59,9 +59,10 @@ y se mantiene fuera del gate hermético porque depende del HOME real.
 
 ## CI y criterio de release
 
-GitHub Actions ejecuta la verificación principal en macOS con Node.js 22 y 24, el smoke de la
-skill en un job aislado y Gitleaks sobre el historial. Las acciones externas están fijadas por
-SHA. Un release solo está listo cuando:
+GitHub Actions ejecuta la verificación principal en macOS con Node.js 22 y 24 y el smoke de la
+skill en un job aislado. El job de secretos descarga Gitleaks 8.30.1, verifica su SHA-256 antes
+de ejecutarlo y escanea el historial completo. Las acciones externas restantes están fijadas
+por SHA. Un release solo está listo cuando:
 
 - `npm run release:verify` termina con código 0;
 - el worktree contiene únicamente los cambios previstos;

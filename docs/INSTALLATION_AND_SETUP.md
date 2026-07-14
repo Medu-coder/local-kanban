@@ -125,7 +125,13 @@ actual, inicia/reinicia PM2, espera con límite al health endpoint y solo entonc
 navegador. `Stop_Kanban.command` detiene el proceso. PM2 lo mantiene vivo mientras la sesión
 local está activa, pero este repositorio no instala arranque automático tras reiniciar macOS.
 
-Después de `start` o `restart`, verifica que PM2 terminó de levantar el proceso:
+`start` y `restart` no terminan correctamente hasta que `/api/health` devuelve un payload
+válido. El sondeo tiene 60 intentos, intervalo de un segundo y timeout de petición de un
+segundo por defecto. Puede ajustarse con `LOCAL_KANBAN_HEALTH_ATTEMPTS`,
+`LOCAL_KANBAN_HEALTH_INTERVAL_MS` y `LOCAL_KANBAN_HEALTH_REQUEST_TIMEOUT_MS`. Si se agota, el
+comando falla con las acciones exactas para consultar estado y logs.
+
+Después puedes confirmar manualmente el proceso y su diagnóstico:
 
 ```bash
 npm run status
@@ -175,6 +181,9 @@ comprobación local separada. Las evaluaciones son deterministas y cubren las in
 benchmark usa `fixtures/long-project/scenario.json`; informa rendimiento para detectar
 regresiones, pero su gate estable valida el resultado semántico, no un umbral temporal
 dependiente de la máquina.
+
+CI descarga Gitleaks 8.30.1 desde su release oficial, valida el SHA-256 fijado y escanea todo
+el historial Git. No depende del runtime interno de `gitleaks-action`.
 
 Consulta [TESTING.md](TESTING.md) para la matriz completa, los umbrales de cobertura y la
 equivalencia exacta con CI.

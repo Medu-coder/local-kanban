@@ -7,11 +7,13 @@ import { fileURLToPath } from "node:url";
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(testDir, "..");
 
-test("el arranque de produccion no reconstruye y PM2 es dependencia de runtime", async () => {
+test("el arranque de produccion no reconstruye, espera health y PM2 es dependencia de runtime", async () => {
   const pkg = JSON.parse(await fs.readFile(path.join(rootDir, "package.json"), "utf8"));
 
   assert.doesNotMatch(pkg.scripts.start, /npm run build/u);
   assert.match(pkg.scripts.start, /check-production-build\.js.*pm2 startOrRestart/u);
+  assert.match(pkg.scripts.start, /wait-for-health\.js/u);
+  assert.match(pkg.scripts.restart, /check-production-build\.js.*pm2 restart.*wait-for-health\.js/u);
   assert.equal(pkg.dependencies.pm2, "^7.0.3");
   assert.equal(pkg.devDependencies.pm2, undefined);
 });
@@ -58,15 +60,26 @@ test("npm solo autoriza los scripts nativos revisados y fijados", async () => {
   });
 });
 
-test("los launchers fallan de forma segura y esperan el health endpoint con limite", async () => {
+test("los launchers delegan el health acotado al arranque canónico", async () => {
   const launch = await fs.readFile(path.join(rootDir, "Launch_Kanban.command"), "utf8");
   const stop = await fs.readFile(path.join(rootDir, "Stop_Kanban.command"), "utf8");
 
   assert.match(launch, /^set -euo pipefail$/mu);
   assert.match(stop, /^set -euo pipefail$/mu);
-  assert.match(launch, /\/api\/health/u);
-  assert.match(launch, /MAX_HEALTH_ATTEMPTS/u);
   assert.match(launch, /npm run build/u);
+  assert.match(launch, /npm start/u);
+  assert.doesNotMatch(launch, /curl/u);
+});
+
+test("CI instala Gitleaks sin acciones Node 20 y verifica binario e historial", async () => {
+  const workflow = await fs.readFile(path.join(rootDir, ".github", "workflows", "ci.yml"), "utf8");
+
+  assert.doesNotMatch(workflow, /gitleaks\/gitleaks-action/u);
+  assert.match(workflow, /gitleaks_8\.30\.1_linux_x64\.tar\.gz/u);
+  assert.match(workflow, /551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb/u);
+  assert.match(workflow, /sha256sum --check --strict/u);
+  assert.match(workflow, /--retry 3 --retry-all-errors/u);
+  assert.match(workflow, /--log-opts="--all"/u);
 });
 
 test("el gate de release usa el smoke hermetico sin flags ignorados", async () => {
