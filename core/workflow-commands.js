@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 
 import { transitionStoryCommand, validateProjectDocuments } from "./commands.js";
 import { buildOperationalCapsule, scheduleStories } from "./coordination.js";
+import { explainQuarantine } from "./degradation.js";
 import { DomainError } from "./errors.js";
 import {
   createEpicCommand,
@@ -19,6 +20,7 @@ import { resolveProjectPaths } from "./paths.js";
 import { getRegisteredProject } from "./project.js";
 import { openRuntime } from "./runtime.js";
 import { readCanonicalStory } from "./entity-repository.js";
+import { reconcileProjectDocuments } from "./reconciliation.js";
 import { evaluateStoryGates } from "./story.js";
 
 const execFileAsync = promisify(execFile);
@@ -66,6 +68,45 @@ async function storyContext(options) {
     });
   }
   return { ...resolved, story: current.entity };
+}
+
+async function runtimeDegradations(project, paths, runtime, actor) {
+  await reconcileProjectDocuments(paths, runtime, { actor });
+  const quarantineIssues = runtime.listQuarantines().map(explainQuarantine);
+  const operationIssues = runtime.listProblemOperations().map((operation) => ({
+    id: `operation:${operation.id}`,
+    severity: "fail",
+    code: `operation_${operation.status}`,
+    scope: operation.entity_type,
+    entityType: operation.entity_type,
+    entityId: operation.entity_id,
+    summary: `La operación durable ${operation.id} está ${operation.status}.`,
+    cause: operation.error ?? "La escritura no alcanzó un estado terminal verificable.",
+    impact: "Las mutaciones quedan bloqueadas para evitar perder o duplicar una escritura.",
+    action: "Ejecuta doctor y revisa recovery antes de continuar.",
+    command: "local-kanban doctor --json",
+    verification: "La operación deja de estar pending/quarantined y doctor devuelve healthy.",
+    details: operation,
+  }));
+  return [...quarantineIssues, ...operationIssues];
+}
+
+function assertRuntimeReady(issues) {
+  if (issues.length > 0) {
+    throw new DomainError(
+      "project_degraded",
+      "El proyecto tiene degradaciones que bloquean el flujo agéntico.",
+      {
+        details: {
+          canProceed: false,
+          degradations: issues,
+          nextAction: issues[0].action,
+          command: issues[0].command,
+        },
+        status: 409,
+      },
+    );
+  }
 }
 
 function dependencyStatuses(story, stories) {
@@ -190,12 +231,32 @@ export async function showStoryWorkflow(options) {
   const { project, paths, story } = await storyContext(options);
   const runtime = openRuntime(paths.rootPath);
   try {
-    return buildOperationalCapsule({
+    const issues = await runtimeDegradations(project, paths, runtime, "show-preflight");
+    const capsule = buildOperationalCapsule({
       story,
       coordination: runtime.getCoordinationState(story.id),
       gates: await currentGates(project, story),
-      nextAction: "inspect_gate",
     });
+    const relevantIssues = issues.filter(
+      (issue) => !issue.entityId || issue.entityId === story.id || issue.scope === "project",
+    );
+    return {
+      ...capsule,
+      canProceed: relevantIssues.length === 0 && capsule.guidance.canProceed,
+      degradations: relevantIssues,
+      ...(relevantIssues.length > 0
+        ? {
+            nextAction: relevantIssues[0].action,
+            guidance: {
+              summary: relevantIssues[0].action,
+              command: relevantIssues[0].command,
+              why: relevantIssues[0].impact,
+              authority: "orchestrator",
+              canProceed: false,
+            },
+          }
+        : {}),
+    };
   } finally {
     runtime.close();
   }
@@ -211,7 +272,12 @@ export async function nextStoriesCommand(options = {}) {
   const validation = await validateProjectDocuments(project);
   if (!validation.ok) {
     throw new DomainError("project_invalid", "El proyecto contiene documentos inválidos.", {
-      details: { invalid: validation.invalid },
+      details: {
+        invalid: validation.invalid,
+        canProceed: false,
+        nextAction: "Corrige los documentos señalados y ejecuta local-kanban validate --json.",
+        command: "local-kanban validate --json",
+      },
       status: 409,
     });
   }
@@ -222,6 +288,7 @@ export async function nextStoriesCommand(options = {}) {
   const paths = await resolveProjectPaths(project);
   const runtime = openRuntime(paths.rootPath);
   try {
+    assertRuntimeReady(await runtimeDegradations(project, paths, runtime, "next-preflight"));
     const coordination = new Map(
       validation.stories.map((story) => [story.id, runtime.getCoordinationState(story.id)]),
     );
@@ -233,13 +300,12 @@ export async function nextStoriesCommand(options = {}) {
       activeCount: held.length,
       wipLimit: held.length + limit,
     });
-    const verification = validation.stories
+    const verificationAll = validation.stories
       .filter((story) => {
         const state = coordination.get(story.id);
         return story.status === "testing" && state.claim?.status !== "stale";
       })
       .sort(workflowOrder)
-      .slice(0, limit)
       .map((story) => {
         const state = coordination.get(story.id);
         const nextAction = state.claim
@@ -256,14 +322,13 @@ export async function nextStoriesCommand(options = {}) {
           nextAction,
         });
       });
-    const attention = validation.stories
+    const attentionAll = validation.stories
       .filter((story) => {
         const state = coordination.get(story.id);
         return state.claim?.status === "stale" || state.blocks.length > 0 ||
           (story.status === "developing" && !state.claim);
       })
       .sort(workflowOrder)
-      .slice(0, limit)
       .map((story) => {
         const state = coordination.get(story.id);
         const nextAction = state.claim?.status === "stale"
@@ -278,6 +343,38 @@ export async function nextStoriesCommand(options = {}) {
           nextAction,
         });
       });
+    const activeAll = validation.stories
+      .filter((story) => coordination.get(story.id).claim?.status !== "stale")
+      .sort(workflowOrder)
+      .map((story) => buildOperationalCapsule({
+        story,
+        coordination: coordination.get(story.id),
+        gates: evaluateStoryGates(story, dependencyStatuses(story, validation.stories)),
+      }));
+    const visibleIds = new Set([
+      ...selected.map((item) => item.story.id),
+      ...verificationAll.map((item) => item.story.id),
+      ...attentionAll.map((item) => item.story.id),
+      ...activeAll.map((item) => item.story.id),
+    ]);
+    const deferredAll = validation.stories
+      .filter((story) => story.status !== "done" && !visibleIds.has(story.id))
+      .sort(workflowOrder)
+      .map((story) => buildOperationalCapsule({
+        story,
+        coordination: coordination.get(story.id),
+        gates: evaluateStoryGates(story, dependencyStatuses(story, validation.stories)),
+      }));
+    const page = (items) => ({
+      total: items.length,
+      returned: Math.min(items.length, limit),
+      hasMore: items.length > limit,
+      items: items.slice(0, limit),
+    });
+    const verificationPage = page(verificationAll);
+    const attentionPage = page(attentionAll);
+    const activePage = page(activeAll);
+    const deferredPage = page(deferredAll);
     return {
       count: selected.length,
       stories: selected.map(({ story, unlockCount, whyReady }) => ({
@@ -289,10 +386,32 @@ export async function nextStoriesCommand(options = {}) {
         }),
         scheduling: { unlockCount, whyReady },
       })),
-      verificationCount: verification.length,
-      verification,
-      attentionCount: attention.length,
-      attention,
+      verificationCount: verificationPage.total,
+      verification: verificationPage.items,
+      verificationPage,
+      attentionCount: attentionPage.total,
+      attention: attentionPage.items,
+      attentionPage,
+      activeCount: activePage.total,
+      active: activePage.items,
+      activePage,
+      deferredCount: deferredPage.total,
+      deferred: deferredPage.items,
+      deferredPage,
+      summary: {
+        implementation: selected.length,
+        verification: verificationPage.total,
+        attention: attentionPage.total,
+        active: activePage.total,
+        deferred: deferredPage.total,
+        nextAction: selected[0]
+          ? `local-kanban claim ${selected[0].story.id} --agent AGENT_ID --json`
+          : attentionPage.items[0]?.guidance.command
+            ?? verificationPage.items[0]?.guidance.command
+            ?? activePage.items[0]?.guidance.command
+            ?? deferredPage.items[0]?.guidance.command
+            ?? "No hay trabajo pendiente.",
+      },
     };
   } finally {
     runtime.close();
@@ -312,6 +431,7 @@ export async function claimStoryWorkflow(options) {
   const runtime = openRuntime(paths.rootPath);
   let claimed;
   try {
+    assertRuntimeReady(await runtimeDegradations(project, paths, runtime, "claim-preflight"));
     claimed = runtime.claimStory({
       storyId: story.id,
       agentId,
@@ -410,6 +530,8 @@ export async function resolveBlockWorkflow(options) {
     return runtime.resolveBlock({
       ...claimEnvelope(options),
       blockId: requireText(options.blockId, "blockId"),
+      resolution: requireText(options.resolution, "resolution"),
+      evidence: options.evidence,
     });
   } finally {
     runtime.close();
@@ -417,12 +539,46 @@ export async function resolveBlockWorkflow(options) {
 }
 
 export async function releaseStoryWorkflow(options) {
-  const { paths } = await storyContext(options);
+  const { paths, story } = await storyContext(options);
   const runtime = openRuntime(paths.rootPath);
   try {
+    const outcome = options.outcome ?? "released";
+    const state = runtime.getCoordinationState(options.storyId);
+    const checkpointIsCurrent = state.checkpoint?.attemptId === options.attemptId;
+    const currentEvidence = (story.evidence ?? []).filter(
+      (item) => item.attempt_id === options.attemptId,
+    );
+    const evidenceIsCurrent = currentEvidence.length > 0;
+    const summary = String(options.summary ?? "").trim();
+    const nextAction = String(options.nextAction ?? "").trim();
+    if (
+      !["completed", "stale"].includes(outcome) &&
+      !checkpointIsCurrent &&
+      !evidenceIsCurrent &&
+      (!summary || !nextAction)
+    ) {
+      throw new DomainError(
+        "handoff_required",
+        "release exige un checkpoint vigente o --summary y --next-action.",
+        {
+          details: {
+            storyId: options.storyId,
+            attemptId: options.attemptId,
+            nextAction: "Registra un checkpoint o repite release con un handoff explícito.",
+            command: `local-kanban checkpoint ${options.storyId} --attempt-id ${options.attemptId} --fencing-token ${options.fencingToken} --summary \"...\" --next-action \"...\" --json`,
+          },
+          status: 409,
+        },
+      );
+    }
     return runtime.releaseClaim({
       ...claimEnvelope(options),
-      outcome: options.outcome ?? "released",
+      outcome,
+      summary: summary || state.checkpoint?.summary || currentEvidence.at(-1)?.summary,
+      nextAction: nextAction || state.checkpoint?.payload?.nextAction ||
+        (story.status === "testing"
+          ? (story.risk === "high" ? `claim ${story.id} as independent verifier` : `claim ${story.id} as orchestrator`)
+          : `claim ${story.id} to resume`),
     });
   } finally {
     runtime.close();
@@ -586,7 +742,29 @@ export async function validateStoryWorkflow(options) {
   const commands = story.validation.commands;
   const results = [];
   for (const command of commands) {
-    results.push(await executeValidationCommand(command, validationRoot));
+    try {
+      results.push(await executeValidationCommand(command, validationRoot));
+    } catch (error) {
+      const failedRuntime = openRuntime(paths.rootPath);
+      try {
+        failedRuntime.appendAudit({
+          eventType: "validation_failed",
+          entityType: "story",
+          entityId: story.id,
+          actor: envelope.actor,
+          payload: {
+            attemptId: envelope.attemptId,
+            command,
+            error: error.details ?? { message: error.message },
+            nextAction: "Corregir el fallo, registrar checkpoint y repetir local-kanban validate.",
+          },
+          createdAt: new Date().toISOString(),
+        });
+      } finally {
+        failedRuntime.close();
+      }
+      throw error;
+    }
   }
   const recordedAt = new Date().toISOString();
   const evidence = results.map((result) => ({

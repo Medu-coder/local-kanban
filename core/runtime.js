@@ -327,6 +327,16 @@ export class RuntimeStore {
     );
   }
 
+  listProblemOperations() {
+    return this.db
+      .prepare(
+        `SELECT * FROM operations
+         WHERE status IN ('pending', 'quarantined') ORDER BY created_at, id`,
+      )
+      .all()
+      .map(mapOperation);
+  }
+
   beginOperation(input) {
     return this.transaction(() => {
       const requestFingerprint = input.requestFingerprint ?? input.idempotencyKey;
@@ -773,7 +783,13 @@ export class RuntimeStore {
           entityType: "story",
           entityId: claim.story_id,
           actor: input.actor ?? claim.agent_id,
-          payload: { attemptId: claim.attempt_id, fencingToken: claim.fencing_token, outcome },
+          payload: {
+            attemptId: claim.attempt_id,
+            fencingToken: claim.fencing_token,
+            outcome,
+            summary: input.summary ?? null,
+            nextAction: input.nextAction ?? null,
+          },
           createdAt: timestamp,
         },
         false,
@@ -944,7 +960,11 @@ export class RuntimeStore {
           entityType: "story",
           entityId: claim.story_id,
           actor: input.actor ?? claim.agent_id,
-          payload: { blockId: block.id },
+          payload: {
+            blockId: block.id,
+            resolution: input.resolution ?? null,
+            evidence: input.evidence ?? null,
+          },
           createdAt: timestamp,
         },
         false,
@@ -1003,6 +1023,23 @@ export class RuntimeStore {
       payload: parseJson(row.payload_json) ?? {},
       createdAt: row.created_at,
     }));
+  }
+
+  listEntityStates() {
+    return this.db
+      .prepare(
+        `SELECT entity_type, entity_id, revision, content_hash, pending_operation_id, updated_at
+         FROM entity_state ORDER BY entity_type, entity_id`,
+      )
+      .all()
+      .map((row) => ({
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        revision: row.revision,
+        contentHash: row.content_hash,
+        pendingOperationId: row.pending_operation_id,
+        updatedAt: row.updated_at,
+      }));
   }
 
   reconcileDocument(input) {
@@ -1092,6 +1129,18 @@ export class RuntimeStore {
         runtimeRevision: state?.revision ?? null,
         attemptId: heldClaim?.attempt_id ?? null,
       };
+      const existingQuarantine = this.db
+        .prepare(
+          `SELECT reason, details_json FROM entity_quarantine
+           WHERE entity_type = ? AND entity_id = ? AND resolved_at IS NULL`,
+        )
+        .get(entityType, entityId);
+      if (
+        existingQuarantine?.reason === reason &&
+        existingQuarantine.details_json === JSON.stringify(details)
+      ) {
+        return { status: "quarantined", entityType, entityId, reason, details, unchanged: true };
+      }
       this.db
         .prepare(
           `INSERT INTO entity_quarantine (
@@ -1136,12 +1185,108 @@ export class RuntimeStore {
       }));
   }
 
+  acceptCurrentDocument(input) {
+    const entityType = requireText(input.entityType, "entityType");
+    const entityId = requireText(input.entityId, "entityId");
+    const revision = input.revision;
+    const contentHash = requireText(input.contentHash, "contentHash");
+    const justification = requireText(input.justification, "justification");
+    const timestamp = toTimestamp(input.now);
+    if (!["story", "epic"].includes(entityType) || !Number.isInteger(revision) || revision < 1) {
+      throw new DomainError("reconciliation_input_invalid", "Entidad o revisión no válida.", {
+        details: { entityType, entityId, revision },
+        status: 400,
+      });
+    }
+
+    return this.transaction(() => {
+      const state = this.db
+        .prepare("SELECT * FROM entity_state WHERE entity_type = ? AND entity_id = ?")
+        .get(entityType, entityId);
+      const quarantine = this.db
+        .prepare(
+          `SELECT * FROM entity_quarantine
+           WHERE entity_type = ? AND entity_id = ? AND resolved_at IS NULL`,
+        )
+        .get(entityType, entityId);
+      const heldClaim = entityType === "story" ? this._heldClaim(entityId) : null;
+      if (!state || !quarantine) {
+        throw new DomainError(
+          "reconciliation_not_required",
+          "La entidad no tiene una divergencia runtime/Markdown pendiente.",
+          { details: { entityType, entityId }, status: 409 },
+        );
+      }
+      if (quarantine.reason !== "revision_divergence") {
+        throw new DomainError(
+          "reconciliation_unsafe",
+          "Solo una divergencia de revisión validada puede aceptar el Markdown actual.",
+          { details: { entityType, entityId, reason: quarantine.reason }, status: 409 },
+        );
+      }
+      if (state.pending_operation_id || heldClaim) {
+        throw new DomainError(
+          "reconciliation_unsafe",
+          "La entidad tiene una operación o claim activo y no puede aceptarse.",
+          {
+            details: {
+              entityType,
+              entityId,
+              operationId: state.pending_operation_id,
+              attemptId: heldClaim?.attempt_id,
+            },
+            status: 409,
+          },
+        );
+      }
+
+      this.db
+        .prepare(
+          `UPDATE entity_state
+           SET revision = ?, content_hash = ?, pending_operation_id = NULL, updated_at = ?
+           WHERE entity_type = ? AND entity_id = ?`,
+        )
+        .run(revision, contentHash, timestamp, entityType, entityId);
+      this.db
+        .prepare("DELETE FROM entity_quarantine WHERE entity_type = ? AND entity_id = ?")
+        .run(entityType, entityId);
+      this.appendAudit(
+        {
+          eventType: "document_divergence_accepted",
+          entityType,
+          entityId,
+          actor: input.actor ?? "human-recovery",
+          payload: {
+            justification,
+            previousRevision: state.revision,
+            previousHash: state.content_hash,
+            revision,
+            contentHash,
+          },
+          createdAt: timestamp,
+        },
+        false,
+      );
+      return { status: "accepted", entityType, entityId, revision, justification };
+    });
+  }
+
   quarantineEntity(input) {
     const entityType = requireText(input.entityType, "entityType");
     const entityId = requireText(input.entityId, "entityId");
     const reason = requireText(input.reason, "reason");
     const timestamp = toTimestamp(input.now);
     return this.transaction(() => {
+      const detailsJson = JSON.stringify(input.details ?? {});
+      const existing = this.db
+        .prepare(
+          `SELECT reason, details_json FROM entity_quarantine
+           WHERE entity_type = ? AND entity_id = ? AND resolved_at IS NULL`,
+        )
+        .get(entityType, entityId);
+      if (existing?.reason === reason && existing.details_json === detailsJson) {
+        return { status: "quarantined", entityType, entityId, reason, unchanged: true };
+      }
       this.db
         .prepare(
           `INSERT INTO entity_quarantine (
@@ -1154,7 +1299,7 @@ export class RuntimeStore {
              resolved_at = NULL,
              resolved_by = NULL`,
         )
-        .run(entityType, entityId, reason, JSON.stringify(input.details ?? {}), timestamp);
+        .run(entityType, entityId, reason, detailsJson, timestamp);
       this.appendAudit(
         {
           eventType: "document_quarantined",

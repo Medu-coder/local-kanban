@@ -314,7 +314,10 @@ test("CLI cubre planificación completa sin editar Markdown manualmente", async 
       "--type", "human", "--description", "Confirmar alcance", "--owner", "Eduardo",
       "--action", "Confirmar", "--resume-condition", "Confirmado",
     ], rootPath, configPath)).stdout);
-    await runCli(["resolve", "STO-001", ...envelope, "--block-id", blocked.block.id], rootPath, configPath);
+    await runCli([
+      "resolve", "STO-001", ...envelope, "--block-id", blocked.block.id,
+      "--resolution", "Alcance confirmado por Eduardo",
+    ], rootPath, configPath);
     await runCli(["checkpoint", "STO-001", ...envelope, "--summary", "Implementación lista"], rootPath, configPath);
     await runCli(["validate", "STO-001", ...envelope], worktree.path, configPath);
     const verificationQueue = JSON.parse(
@@ -479,7 +482,11 @@ test("CLI next conserva trabajo bloqueado o liberado en la cola de atención", a
       "--type", "human", "--description", "Falta decisión", "--owner", "Eduardo",
       "--action", "Elegir opción", "--resume-condition", "Opción elegida",
     ], rootPath, configPath)).stdout);
-    await runCli(["release", "STO-ATTENTION", ...envelope, "--outcome", "released"], rootPath, configPath);
+    await runCli([
+      "release", "STO-ATTENTION", ...envelope, "--outcome", "released",
+      "--summary", "Bloqueado a la espera de decisión",
+      "--next-action", "Reclamar y resolver cuando Eduardo elija una opción",
+    ], rootPath, configPath);
 
     const next = JSON.parse((await runCli(["next", "--json"], rootPath, configPath)).stdout);
     assert.equal(next.count, 0);

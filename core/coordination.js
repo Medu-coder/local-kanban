@@ -102,6 +102,12 @@ export function buildOperationalCapsule({ story, coordination, gates = {}, nextA
     ...(Object.hasOwn(gates, "isReady") ? { isReady: gates.isReady && blocks.length === 0 } : {}),
     ...(Object.hasOwn(gates, "isDone") ? { isDone: gates.isDone && blocks.length === 0 } : {}),
   };
+  const guidance = deriveOperationalGuidance({
+    story,
+    coordination,
+    gates: effectiveGates,
+    requestedAction: nextAction,
+  });
   return {
     story: {
       id: story.id,
@@ -110,6 +116,7 @@ export function buildOperationalCapsule({ story, coordination, gates = {}, nextA
       revision: story.revision,
       priority: story.priority,
       risk: story.risk,
+      executionMode: story.execution_mode ?? "human",
     },
     execution: {
       operationalStatus: coordination?.operationalStatus ?? "unclaimed",
@@ -121,8 +128,13 @@ export function buildOperationalCapsule({ story, coordination, gates = {}, nextA
     },
     objective: story.objective,
     scope: story.scope ?? [],
+    nonScope: story.non_scope ?? [],
     contextFiles: story.context_files ?? [],
     validation: story.validation?.commands ?? [],
+    dependencies: story.dependencies ?? [],
+    readinessCriteria: story.readiness_criteria ?? [],
+    acceptanceCriteria: story.acceptance_criteria ?? [],
+    subtasks: story.subtasks ?? [],
     gates: effectiveGates,
     blocks: blocks.map((block) => ({
       id: block.id,
@@ -142,6 +154,88 @@ export function buildOperationalCapsule({ story, coordination, gates = {}, nextA
           createdAt: checkpoint.createdAt,
         }
       : null,
-    nextAction,
+    nextAction: guidance.summary,
+    guidance,
+  };
+}
+
+export function deriveOperationalGuidance({ story, coordination, gates = {}, requestedAction = null }) {
+  const claim = coordination?.claim ?? null;
+  const blocks = coordination?.blocks ?? [];
+  if (requestedAction) {
+    return {
+      summary: requestedAction,
+      command: requestedAction.startsWith("local-kanban ") ? requestedAction : null,
+      why: "Acción indicada por el flujo que construyó la cápsula.",
+      authority: story.status === "testing" ? "orchestrator" : "specialist",
+      canProceed: blocks.length === 0 && claim?.status !== "stale",
+    };
+  }
+  if (claim?.status === "stale") {
+    return {
+      summary: `Reconciliar y liberar el claim expirado de ${story.id}.`,
+      command: `local-kanban show ${story.id} --json`,
+      why: "El fencing expirado impide continuar o reasignar con seguridad.",
+      authority: "orchestrator",
+      canProceed: false,
+    };
+  }
+  if (blocks.length > 0) {
+    return {
+      summary: blocks[0].action,
+      command: `local-kanban show ${story.id} --json`,
+      why: blocks[0].resumeCondition,
+      authority: blocks[0].owner,
+      canProceed: false,
+    };
+  }
+  if (claim) {
+    return {
+      summary: story.status === "testing"
+        ? (story.risk === "high" ? "Liberar el claim antes de una revisión independiente." : "Completar la verificación integrada.")
+        : "Continuar el intento activo desde su último checkpoint.",
+      command: `local-kanban show ${story.id} --json`,
+      why: "Existe un attempt y fencing token vigentes.",
+      authority: story.status === "testing" ? "orchestrator" : "specialist",
+      canProceed: true,
+    };
+  }
+  if (story.status === "done") {
+    return {
+      summary: "Historia cerrada; reevaluar el trabajo desbloqueado.",
+      command: "local-kanban next --json",
+      why: "No queda ejecución pendiente en esta historia.",
+      authority: "orchestrator",
+      canProceed: true,
+    };
+  }
+  if (story.status === "testing") {
+    const complete = gates.isDone || gates.canComplete;
+    return {
+      summary: complete
+        ? (story.risk === "high" ? "Reclamar como revisor independiente." : "Reclamar como orquestador y completar.")
+        : "Resolver los gates de aceptación, subtareas o evidencia antes de completar.",
+      command: `local-kanban claim ${story.id} --agent AGENT_ID --json`,
+      why: complete ? "La entrega está lista para revisión." : "La Definition of Done todavía no está completa.",
+      authority: story.risk === "high" ? "independent-verifier" : "orchestrator",
+      canProceed: complete,
+    };
+  }
+  if (story.status === "developing") {
+    return {
+      summary: `Reclamar ${story.id} para reanudar la implementación.`,
+      command: `local-kanban claim ${story.id} --agent AGENT_ID --json`,
+      why: "La historia está en desarrollo pero no conserva un claim activo.",
+      authority: "specialist",
+      canProceed: true,
+    };
+  }
+  const ready = gates.isReady ?? false;
+  return {
+    summary: ready ? `Reclamar ${story.id}.` : "Completar la Definition of Ready y sus dependencias.",
+    command: ready ? `local-kanban claim ${story.id} --agent AGENT_ID --json` : `local-kanban show ${story.id} --json`,
+    why: ready ? "La historia está lista, desbloqueada y sin claim." : "Uno o más gates de readiness siguen pendientes.",
+    authority: ready ? "specialist" : "orchestrator",
+    canProceed: ready,
   };
 }

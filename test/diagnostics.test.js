@@ -113,14 +113,17 @@ test("doctor reconcilia y pone en cuarentena un Markdown inválido sin depender 
     assert.equal(result.metrics.quarantinedEntities, 1);
     assert.equal(result.checks.find((item) => item.id === "schema_dag").status, "fail");
     assert.equal(result.checks.find((item) => item.id === "sqlite").status, "fail");
-    assert.deepEqual(result.runtime.reconciliation, [
-      {
+    assert.deepEqual(
+      result.runtime.reconciliation.map(({ details: _details, ...item }) => item),
+      [{
         status: "quarantined",
         entityType: "story",
         entityId: "STO-BROKEN",
         reason: "invalid_document",
-      },
-    ]);
+      }],
+    );
+    assert.equal(result.degradations.canProceed, false);
+    assert.match(result.degradations.issues[0].action, /Corrige|Resuelve/u);
   } finally {
     await fixture.cleanup();
   }

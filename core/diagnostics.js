@@ -6,6 +6,8 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import { degradationEnvelope } from "./degradation.js";
+
 const execFileAsync = promisify(execFile);
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -218,10 +220,13 @@ export async function diagnoseProject({ validation, recovery, paths, runtime, ..
     await inspectSkill(options),
   ];
   const health = checks.some((item) => item.status !== "pass") ? "degraded" : "healthy";
+  const quarantines = runtime.listQuarantines();
   return {
     ok: !checks.some((item) => item.status === "fail"),
     health,
     checks,
     metrics: collectMetrics(runtime),
+    degradations: degradationEnvelope({ health, checks, quarantines }),
+    quarantines,
   };
 }

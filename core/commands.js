@@ -6,9 +6,10 @@ import matter from "gray-matter";
 import { DomainError } from "./errors.js";
 import { diagnoseProject } from "./diagnostics.js";
 import { resolveProjectPaths, readFileLimited } from "./paths.js";
+import { migrateLegacyDocuments } from "./legacy-migration.js";
 import { getRegisteredProject } from "./project.js";
 import { openRuntime } from "./runtime.js";
-import { reconcileProjectDocuments } from "./reconciliation.js";
+import { reconcileProjectDocuments, reconcileProjectQuarantines } from "./reconciliation.js";
 import { validateEpic, validateProject, validateStory } from "./schema.js";
 import {
   persistStory,
@@ -304,4 +305,43 @@ export async function doctorProject(options = {}) {
   } finally {
     runtime.close();
   }
+}
+
+export async function reconcileProjectCommand(options = {}) {
+  const project = options.project ?? (await getRegisteredProject(options));
+  const paths = await resolveProjectPaths(project);
+  const runtime = openRuntime(paths.rootPath);
+  try {
+    return await reconcileProjectQuarantines(paths, runtime, {
+      entityIds: options.entityIds,
+      all: options.all,
+      acceptCurrent: options.acceptCurrent,
+      justification: options.justification,
+      actor: options.actor,
+    });
+  } finally {
+    runtime.close();
+  }
+}
+
+export async function migrateLegacyProjectCommand(options = {}) {
+  const project = options.project ?? (await getRegisteredProject(options));
+  const paths = await resolveProjectPaths(project);
+  const runtime = openRuntime(paths.rootPath);
+  try {
+    const unsafeOperations = runtime.listProblemOperations();
+    const activeClaims = runtime.db
+      .prepare("SELECT COUNT(*) AS count FROM claims WHERE status IN ('held', 'stale')")
+      .get().count;
+    if (unsafeOperations.length > 0 || activeClaims > 0) {
+      throw new DomainError(
+        "legacy_migration_unsafe",
+        "No se migra con operaciones o claims abiertos.",
+        { details: { unsafeOperations, activeClaims }, status: 409 },
+      );
+    }
+  } finally {
+    runtime.close();
+  }
+  return migrateLegacyDocuments(paths, options);
 }

@@ -3,7 +3,13 @@
 import process from "node:process";
 import { randomUUID } from "node:crypto";
 
-import { doctorProject, transitionStoryCommand, validateProjectDocuments } from "../core/commands.js";
+import {
+  doctorProject,
+  migrateLegacyProjectCommand,
+  reconcileProjectCommand,
+  transitionStoryCommand,
+  validateProjectDocuments,
+} from "../core/commands.js";
 import { DomainError } from "../core/errors.js";
 import { getRegisteredProject, initializeProject } from "../core/project.js";
 import {
@@ -41,19 +47,23 @@ Uso:
   local-kanban block STORY_ID --attempt-id ID --fencing-token N --type TYPE
     --description TEXT --owner OWNER --action TEXT --resume-condition TEXT
     [--evidence TEXT] [--actor ACTOR] [--json]
-  local-kanban resolve STORY_ID --attempt-id ID --fencing-token N --block-id ID [--json]
+  local-kanban resolve STORY_ID --attempt-id ID --fencing-token N --block-id ID
+    --resolution TEXT [--evidence TEXT] [--json]
   local-kanban check STORY_ID --attempt-id ID --fencing-token N
     (--criterion ID | --subtask ID) [--json]
   local-kanban worktree STORY_ID --attempt-id ID --fencing-token N [--base-commit REF] [--json]
   local-kanban worktree-remove STORY_ID --attempt-id ID [--fencing-token N]
     [--delete-branch] [--json]
   local-kanban release STORY_ID --attempt-id ID --fencing-token N
-    [--outcome released|failed|abandoned|stale] [--json]
+    [--outcome released|failed|abandoned|stale] [--summary TEXT --next-action TEXT] [--json]
   local-kanban validate [STORY_ID --attempt-id ID --fencing-token N]
     [--commit REF] [--evidence-type TYPE] [--summary TEXT] [--actor ACTOR] [--json]
   local-kanban complete STORY_ID --attempt-id ID --fencing-token N
     --role orchestrator [--actor ACTOR] [--json]
   local-kanban doctor [--json]
+  local-kanban reconcile [ENTITY_ID|--all] [--accept-current --reason TEXT] [--json]
+  local-kanban migrate-legacy --validation COMMAND[,COMMAND] --risk standard|high
+    --reason TEXT [--apply] [--json]
   local-kanban transition STORY_ID --status STATUS --expected-revision N
     [--epic EPI_ID|none] [--actor ACTOR] [--role orchestrator|specialist]
     [--idempotency-key KEY] [--json]
@@ -271,6 +281,8 @@ async function run() {
       ...workflowOptions(options),
       storyId: options._[0],
       blockId: options.blockId,
+      resolution: options.resolution,
+      evidence: options.evidence,
     });
     output(result, options.json);
     return;
@@ -313,6 +325,8 @@ async function run() {
       ...workflowOptions(options),
       storyId: options._[0],
       outcome: options.outcome,
+      summary: options.summary,
+      nextAction: options.nextAction,
     });
     output(result, options.json);
     return;
@@ -339,9 +353,43 @@ async function run() {
       configPath: process.env.KANBAN_CONFIG_PATH,
     });
     output(result, options.json);
-    if (!result.ok) {
+    if (result.health !== "healthy") {
       process.exitCode = 2;
     }
+    return;
+  }
+
+  if (command === "reconcile") {
+    const entityId = options._[0];
+    if (entityId && options.all) {
+      throw new DomainError("command_invalid", "Usa ENTITY_ID o --all, no ambos.");
+    }
+    const result = await reconcileProjectCommand({
+      cwd: process.cwd(),
+      configPath: process.env.KANBAN_CONFIG_PATH,
+      entityIds: entityId ? [entityId] : [],
+      all: Boolean(options.all),
+      acceptCurrent: Boolean(options.acceptCurrent),
+      justification: options.reason,
+      actor: options.actor ?? "human-recovery",
+    });
+    output(result, options.json);
+    if (result.health !== "healthy") {
+      process.exitCode = 2;
+    }
+    return;
+  }
+
+  if (command === "migrate-legacy") {
+    const result = await migrateLegacyProjectCommand({
+      cwd: process.cwd(),
+      configPath: process.env.KANBAN_CONFIG_PATH,
+      validationCommands: commaList(options.validation),
+      risk: options.risk,
+      justification: options.reason,
+      apply: Boolean(options.apply),
+    });
+    output(result, options.json);
     return;
   }
 
@@ -372,7 +420,7 @@ async function run() {
 
   throw new DomainError("command_unknown", `Comando desconocido: ${command}`, {
     details: {
-      available: ["init", "create-epic", "create-story", "next", "show", "claim", "checkpoint", "block", "resolve", "check", "worktree", "worktree-remove", "release", "validate", "complete", "doctor", "transition"],
+      available: ["init", "create-epic", "create-story", "next", "show", "claim", "checkpoint", "block", "resolve", "check", "worktree", "worktree-remove", "release", "validate", "complete", "doctor", "reconcile", "migrate-legacy", "transition"],
     },
   });
 }
