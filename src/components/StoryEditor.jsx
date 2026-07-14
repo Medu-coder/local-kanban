@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createIdempotencyKey } from "../lib/api";
 
 const emptySubtask = { title: "", done: false };
 const defaultDerivedRule = "dependencies_done";
@@ -98,7 +99,7 @@ function normalizeCriteria(criteria) {
     .filter(Boolean);
 }
 
-function makeInitialState(project, story, draft) {
+function makeInitialState(story, draft) {
   if (story) {
     return {
       id: story.id,
@@ -156,8 +157,8 @@ function makeInitialState(project, story, draft) {
   };
 }
 
-function normalizeFormState(project, story, draft) {
-  const baseState = makeInitialState(project, story, draft);
+function normalizeFormState(story, draft) {
+  const baseState = makeInitialState(story, draft);
 
   return {
     id: baseState.id.trim(),
@@ -190,7 +191,7 @@ function normalizeFormState(project, story, draft) {
 }
 
 export function StoryEditor({
-  project,
+  epics = [],
   story,
   draft,
   onClose,
@@ -199,15 +200,17 @@ export function StoryEditor({
   onDirtyChange,
   onRegisterSubmit,
 }) {
-  const [form, setForm] = useState(() => makeInitialState(project, story, draft));
+  const [form, setForm] = useState(() => makeInitialState(story, draft));
   const formRef = useRef(null);
+  const mutationKeyRef = useRef(createIdempotencyKey());
 
   useEffect(() => {
-    setForm(makeInitialState(project, story, draft));
-  }, [draft, project, story]);
+    setForm(makeInitialState(story, draft));
+    mutationKeyRef.current = createIdempotencyKey();
+  }, [draft, story]);
 
   useEffect(() => {
-    const initialState = normalizeFormState(project, story, draft);
+    const initialState = normalizeFormState(story, draft);
     const currentState = {
       id: form.id.trim(),
       title: form.title.trim(),
@@ -238,7 +241,7 @@ export function StoryEditor({
     };
 
     onDirtyChange?.(JSON.stringify(currentState) !== JSON.stringify(initialState));
-  }, [draft, form, onDirtyChange, project, story]);
+  }, [draft, form, onDirtyChange, story]);
 
   useEffect(() => {
     onRegisterSubmit?.(() => formRef.current?.requestSubmit());
@@ -248,10 +251,12 @@ export function StoryEditor({
   }, [onRegisterSubmit]);
 
   function updateField(field, value) {
+    mutationKeyRef.current = createIdempotencyKey();
     setForm((current) => ({ ...current, [field]: value }));
   }
 
   function updateSubtask(index, field, value) {
+    mutationKeyRef.current = createIdempotencyKey();
     setForm((current) => ({
       ...current,
       subtasks: current.subtasks.map((subtask, subtaskIndex) =>
@@ -261,6 +266,7 @@ export function StoryEditor({
   }
 
   function addSubtask() {
+    mutationKeyRef.current = createIdempotencyKey();
     setForm((current) => ({
       ...current,
       subtasks: [...current.subtasks, { ...emptySubtask, uiKey: createUiKey("subtask") }],
@@ -268,6 +274,7 @@ export function StoryEditor({
   }
 
   function removeSubtask(index) {
+    mutationKeyRef.current = createIdempotencyKey();
     setForm((current) => ({
       ...current,
       subtasks: current.subtasks.filter((_, subtaskIndex) => subtaskIndex !== index),
@@ -275,6 +282,7 @@ export function StoryEditor({
   }
 
   function updateCriteria(criteriaField, index, field, value) {
+    mutationKeyRef.current = createIdempotencyKey();
     setForm((current) => ({
       ...current,
       [criteriaField]: current[criteriaField].map((criterion, criterionIndex) =>
@@ -295,6 +303,7 @@ export function StoryEditor({
   }
 
   function addCriterion(criteriaField) {
+    mutationKeyRef.current = createIdempotencyKey();
     setForm((current) => ({
       ...current,
       [criteriaField]: [
@@ -312,6 +321,7 @@ export function StoryEditor({
   }
 
   function removeCriterion(criteriaField, index) {
+    mutationKeyRef.current = createIdempotencyKey();
     setForm((current) => ({
       ...current,
       [criteriaField]: current[criteriaField].filter((_, criterionIndex) => criterionIndex !== index),
@@ -321,6 +331,7 @@ export function StoryEditor({
   function handleSubmit(event) {
     event.preventDefault();
     onSubmit({
+      idempotencyKey: mutationKeyRef.current,
       id: form.id.trim() || undefined,
       title: form.title,
       description: form.description,
@@ -390,7 +401,7 @@ export function StoryEditor({
             <span>Epica</span>
             <select data-testid="story-epic-select" value={form.epicId} onChange={(event) => updateField("epicId", event.target.value)}>
               <option value="">Sin epica</option>
-              {project.epics.map((epic) => (
+              {epics.map((epic) => (
                 <option key={epic.id} value={epic.id}>
                   {epic.title}
                 </option>

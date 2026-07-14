@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   createEpic,
+  createIdempotencyKey,
   createStory,
   fetchProjects,
   moveStory,
@@ -281,22 +282,30 @@ export default function App() {
     setError("");
 
     try {
+      const { idempotencyKey: submittedKey, ...storyPayload } = payload;
+      const idempotencyKey = submittedKey ?? createIdempotencyKey();
       if (editorStory) {
-        await saveStory(selectedProject.id, editorStory.id, payload);
+        const currentStory = selectedProject.stories.find((story) => story.id === editorStory.id);
+        await saveStory(selectedProject.id, editorStory.id, storyPayload, {
+          idempotencyKey,
+          ...(Number.isSafeInteger(currentStory?.revision ?? editorStory.revision)
+            ? { expectedRevision: currentStory?.revision ?? editorStory.revision }
+            : {}),
+        });
       } else {
-        const nextId = deriveStoryId(payload);
+        const nextId = deriveStoryId(storyPayload);
         const storyExists = selectedProject.stories.some((story) => story.id === nextId);
 
         if (storyExists) {
           throw new Error(`Ya existe una historia con el ID ${nextId}. Usa otro ID o cambia el titulo.`);
         }
 
-        await createStory(selectedProject.id, payload);
+        await createStory(selectedProject.id, storyPayload, { idempotencyKey });
       }
 
       await refreshProjects();
       if (!editorStory) {
-        const createdEpicId = payload.epicId ?? null;
+        const createdEpicId = storyPayload.epicId ?? null;
         const createdLaneId = createdEpicId ?? "__no_epic__";
         const normalizedFilterEpicId = epicFilter === "__no_epic__" ? null : epicFilter;
         const filterExcludesCreatedStory =
@@ -315,6 +324,9 @@ export default function App() {
       runPendingEditorAction();
     } catch (saveError) {
       setError(saveError.message);
+      if (saveError.status === 409) {
+        await refreshProjects({ suppressError: true });
+      }
       pendingEditorActionRef.current = null;
     } finally {
       setIsSavingStory(false);
@@ -330,17 +342,25 @@ export default function App() {
     setError("");
 
     try {
+      const { idempotencyKey: submittedKey, ...epicPayload } = payload;
+      const idempotencyKey = submittedKey ?? createIdempotencyKey();
       if (editorEpic) {
-        await saveEpic(selectedProject.id, editorEpic.id, payload);
+        const currentEpic = selectedProject.epics.find((epic) => epic.id === editorEpic.id);
+        await saveEpic(selectedProject.id, editorEpic.id, epicPayload, {
+          idempotencyKey,
+          ...(Number.isSafeInteger(currentEpic?.revision ?? editorEpic.revision)
+            ? { expectedRevision: currentEpic?.revision ?? editorEpic.revision }
+            : {}),
+        });
       } else {
-        const nextId = deriveEpicId(payload);
+        const nextId = deriveEpicId(epicPayload);
         const epicExists = selectedProject.epics.some((epic) => epic.id === nextId);
 
         if (epicExists) {
           throw new Error(`Ya existe una épica con el ID ${nextId}. Usa otro ID o cambia el título.`);
         }
 
-        await createEpic(selectedProject.id, payload);
+        await createEpic(selectedProject.id, epicPayload, { idempotencyKey });
       }
 
       await refreshProjects();
@@ -356,6 +376,9 @@ export default function App() {
       runPendingEditorAction();
     } catch (saveError) {
       setError(saveError.message);
+      if (saveError.status === 409) {
+        await refreshProjects({ suppressError: true });
+      }
       pendingEditorActionRef.current = null;
     } finally {
       setIsSavingEpic(false);
@@ -484,11 +507,9 @@ export default function App() {
       await moveStory(draggedStory.projectId, draggedStory.id, {
         status: nextStatus,
         epicId: normalizedEpicId,
+        idempotencyKey: createIdempotencyKey(),
         ...(Number.isSafeInteger(draggedStory.revision)
-          ? {
-              expectedRevision: draggedStory.revision,
-              idempotencyKey: crypto.randomUUID(),
-            }
+          ? { expectedRevision: draggedStory.revision }
           : {}),
       });
       await refreshProjects();
@@ -532,7 +553,13 @@ export default function App() {
       const result = await toggleStorySubtask(
         liveSelectedStory.projectId,
         liveSelectedStory.id,
-        subtaskIndex
+        subtaskIndex,
+        {
+          idempotencyKey: createIdempotencyKey(),
+          ...(Number.isSafeInteger(liveSelectedStory.revision)
+            ? { expectedRevision: liveSelectedStory.revision }
+            : {}),
+        }
       );
       const syncedSubtasks = result.subtasks ?? nextSubtasks;
 
@@ -542,7 +569,11 @@ export default function App() {
       await refreshProjects();
     } catch (updateError) {
       setError(updateError.message);
-      setSelectedStory(previousStory);
+      if (updateError.status === 409) {
+        await refreshProjects({ suppressError: true });
+      } else {
+        setSelectedStory(previousStory);
+      }
     } finally {
       setIsUpdatingSubtask(false);
     }
@@ -586,11 +617,26 @@ export default function App() {
     );
 
     try {
-      await toggleStoryCriterion(liveSelectedStory.projectId, liveSelectedStory.id, criteriaType, criterionIndex);
+      await toggleStoryCriterion(
+        liveSelectedStory.projectId,
+        liveSelectedStory.id,
+        criteriaType,
+        criterionIndex,
+        {
+          idempotencyKey: createIdempotencyKey(),
+          ...(Number.isSafeInteger(liveSelectedStory.revision)
+            ? { expectedRevision: liveSelectedStory.revision }
+            : {}),
+        },
+      );
       await refreshProjects();
     } catch (updateError) {
       setError(updateError.message);
-      setSelectedStory(previousStory);
+      if (updateError.status === 409) {
+        await refreshProjects({ suppressError: true });
+      } else {
+        setSelectedStory(previousStory);
+      }
     } finally {
       setIsUpdatingCriterion(false);
     }
@@ -946,7 +992,7 @@ export default function App() {
               </button>
               {isEditorOpen && sidePanelMode === "story-editor" && selectedProject ? (
                 <StoryEditor
-                  project={selectedProject}
+                  epics={selectedProject.epics}
                   story={editorStory}
                   draft={storyDraft}
                   onClose={() => {
@@ -959,7 +1005,6 @@ export default function App() {
                 />
               ) : isEditorOpen && sidePanelMode === "epic-editor" && selectedProject ? (
                 <EpicEditor
-                  project={selectedProject}
                   epic={editorEpic}
                   onClose={() => {
                     requestEditorTransition(() => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { createIdempotencyKey } from "../lib/api";
 
-function makeInitialState(project, epic) {
+function makeInitialState(epic) {
   if (epic) {
     return {
       id: epic.id ?? "",
@@ -20,8 +21,8 @@ function makeInitialState(project, epic) {
   };
 }
 
-function normalizeState(project, epic, form) {
-  const base = form ?? makeInitialState(project, epic);
+function normalizeState(epic, form) {
+  const base = form ?? makeInitialState(epic);
   return {
     id: base.id.trim(),
     title: base.title.trim(),
@@ -36,7 +37,6 @@ function normalizeState(project, epic, form) {
 }
 
 export function EpicEditor({
-  project,
   epic,
   onClose,
   onSubmit,
@@ -44,18 +44,20 @@ export function EpicEditor({
   onDirtyChange,
   onRegisterSubmit,
 }) {
-  const [form, setForm] = useState(() => makeInitialState(project, epic));
+  const [form, setForm] = useState(() => makeInitialState(epic));
   const formRef = useRef(null);
+  const mutationKeyRef = useRef(createIdempotencyKey());
 
   useEffect(() => {
-    setForm(makeInitialState(project, epic));
-  }, [project, epic]);
+    setForm(makeInitialState(epic));
+    mutationKeyRef.current = createIdempotencyKey();
+  }, [epic]);
 
   useEffect(() => {
-    const initialState = normalizeState(project, epic);
-    const currentState = normalizeState(project, epic, form);
+    const initialState = normalizeState(epic);
+    const currentState = normalizeState(epic, form);
     onDirtyChange?.(JSON.stringify(initialState) !== JSON.stringify(currentState));
-  }, [epic, form, onDirtyChange, project]);
+  }, [epic, form, onDirtyChange]);
 
   useEffect(() => {
     onRegisterSubmit?.(() => formRef.current?.requestSubmit());
@@ -65,12 +67,14 @@ export function EpicEditor({
   }, [onRegisterSubmit]);
 
   function updateField(field, value) {
+    mutationKeyRef.current = createIdempotencyKey();
     setForm((current) => ({ ...current, [field]: value }));
   }
 
   function handleSubmit(event) {
     event.preventDefault();
     onSubmit({
+      idempotencyKey: mutationKeyRef.current,
       id: form.id.trim() || undefined,
       title: form.title,
       description: form.description,
