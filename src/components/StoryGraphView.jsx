@@ -6,7 +6,6 @@ import { buildStoryGraph } from "../lib/graph";
 const edgeMeta = {
   epic: { label: "Épica", distance: 110, strength: 0.22 },
   blocked_by: { label: "Blocked by", distance: 150, strength: 0.18 },
-  blocks: { label: "Blocks", distance: 150, strength: 0.18 },
   related_to: { label: "Related to", distance: 185, strength: 0.1 },
 };
 
@@ -131,7 +130,7 @@ export function StoryGraphView({
         return visibilityFilters.related;
       }
 
-      if (edge.kind === "blocked_by" || edge.kind === "blocks") {
+      if (edge.kind === "blocked_by") {
         return visibilityFilters.blocked;
       }
 

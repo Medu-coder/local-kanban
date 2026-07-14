@@ -1293,8 +1293,7 @@ pre {
   stroke-width: 1.5;
 }
 
-.graph-edge--blocked_by,
-.graph-edge--blocks {
+.graph-edge--blocked_by {
   stroke: color-mix(in srgb, var(--stage-developing) 92%, white 8%);
   stroke-width: 2.35;
 }

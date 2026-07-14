@@ -14,7 +14,11 @@ import {
   updateStoryCommand,
 } from "../core/entity-commands.js";
 import { readCanonicalEpic, readCanonicalStory } from "../core/entity-repository.js";
-import { explainProblemOperation, explainQuarantine } from "../core/degradation.js";
+import {
+  explainDoneGate,
+  explainProblemOperation,
+  explainQuarantine,
+} from "../core/degradation.js";
 import { deriveOperationalGuidance } from "../core/coordination.js";
 import { DomainError } from "../core/errors.js";
 import { FilesystemSafetyError } from "../core/paths.js";
@@ -47,8 +51,45 @@ const epicProgressWeights = {
   done: 4,
 };
 const app = express();
+const port = process.env.PORT || 4010;
+const host = process.env.HOST || "127.0.0.1";
+const loopbackHosts = new Set(["127.0.0.1", "::1", "localhost"]);
+const remoteAccessAllowed = process.env.LOCAL_KANBAN_ALLOW_REMOTE === "1";
+
+if (!loopbackHosts.has(host) && !remoteAccessAllowed) {
+  throw new Error(
+    `HOST=${host} expone Local Kanban fuera de loopback. ` +
+      "Define LOCAL_KANBAN_ALLOW_REMOTE=1 solo si has protegido el acceso externamente.",
+  );
+}
 
 app.use(express.json());
+app.use("/api", (req, res, next) => {
+  if (remoteAccessAllowed) {
+    next();
+    return;
+  }
+  const requestHost = String(req.hostname ?? "").replace(/^\[|\]$/gu, "").toLowerCase();
+  let originHost = null;
+  try {
+    originHost = req.get("origin") ? new URL(req.get("origin")).hostname.toLowerCase() : null;
+  } catch {
+    return res.status(403).json({
+      ok: false,
+      code: "local_origin_rejected",
+      error: "El Origin de la petición no es válido.",
+    });
+  }
+  if (!loopbackHosts.has(requestHost) || (originHost && !loopbackHosts.has(originHost))) {
+    return res.status(403).json({
+      ok: false,
+      code: "local_origin_rejected",
+      error: "Local Kanban solo acepta Host y Origin de loopback.",
+      nextAction: "Abre la aplicación mediante http://127.0.0.1 o http://localhost.",
+    });
+  }
+  next();
+});
 
 function normalizeId(value) {
   return String(value ?? "")
@@ -115,19 +156,6 @@ function coerceStringList(values) {
   }
 
   return values.map((value) => String(value ?? "").trim()).filter(Boolean);
-}
-
-function coerceIsoTimestamp(value) {
-  if (!value) {
-    return null;
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date.toISOString();
 }
 
 function createCriterionId(label, index) {
@@ -259,10 +287,11 @@ function enrichStories(project, stories) {
       const linked = storyLookup.get(normalizeId(storyId));
       return linked ? normalizeStoryReference(linked) : createMissingStoryReference(storyId);
     });
-    const blockingStories = story.blocks.map((storyId) => {
-      const linked = storyLookup.get(normalizeId(storyId));
-      return linked ? normalizeStoryReference(linked) : createMissingStoryReference(storyId);
-    });
+    const blockingStories = stories
+      .filter((candidate) => candidate.blockedBy.some(
+        (storyId) => normalizeId(storyId) === normalizeId(story.id),
+      ))
+      .map(normalizeStoryReference);
     const relatedStories = story.relatedTo.map((storyId) => {
       const linked = storyLookup.get(normalizeId(storyId));
       return linked ? normalizeStoryReference(linked) : createMissingStoryReference(storyId);
@@ -359,11 +388,8 @@ function sanitizeStoryPayload(payload, projectId) {
     executionMode: executionModes.includes(payload.executionMode) ? payload.executionMode : "human",
     storyType: storyTypes.includes(payload.storyType) ? payload.storyType : "feature",
     blockedBy: coerceStringList(payload.blockedBy),
-    blocks: coerceStringList(payload.blocks),
     relatedTo: coerceStringList(payload.relatedTo),
     contextFiles: coerceStringList(payload.contextFiles),
-    agentStatusNote: String(payload.agentStatusNote ?? "").trim(),
-    lastAgentUpdate: coerceIsoTimestamp(payload.lastAgentUpdate),
     labels: Array.isArray(payload.labels)
       ? payload.labels.map((label) => String(label).trim()).filter(Boolean)
       : [],
@@ -562,20 +588,17 @@ async function readMarkdownCollection(baseDir, kind, project) {
             ? data.dependencies
                 .filter((dependency) => dependency?.type === "hard")
                 .map((dependency) => String(dependency.story_id))
-            : coerceStringList(data.blocked_by),
-          blocks: coerceStringList(data.blocks),
+            : [],
           relatedTo: Array.isArray(data.dependencies)
             ? data.dependencies
                 .filter((dependency) => dependency?.type === "related")
                 .map((dependency) => String(dependency.story_id))
-            : coerceStringList(data.related_to),
+            : [],
           contextFiles: coerceStringList(data.context_files),
-          agentStatusNote: String(data.agent_status_note ?? "").trim(),
-          lastAgentUpdate: coerceIsoTimestamp(data.last_agent_update),
           labels: Array.isArray(data.labels) ? data.labels : [],
           subtasks: coerceSubtasks(data.subtasks),
-          readyCriteria: coerceCriteria(data.readiness_criteria ?? data.ready_criteria),
-          doneCriteria: coerceCriteria(data.acceptance_criteria ?? data.done_criteria),
+          readyCriteria: coerceCriteria(data.readiness_criteria),
+          doneCriteria: coerceCriteria(data.acceptance_criteria),
           blockers: Array.isArray(data.blockers) ? data.blockers : [],
           evidence: Array.isArray(data.evidence) ? data.evidence : [],
           validation: data.validation ?? { commands: [] },
@@ -632,30 +655,26 @@ async function loadProjects() {
         const quarantineIssues = [...quarantines.values()].map(explainQuarantine);
         const operationIssues = problemOperations.map(explainProblemOperation);
         const gateIssues = storiesWithEpic
-          .filter((story) => story.status === "done" && !story.isDoneValidated)
-          .map((story) => ({
-            id: `done-gate:${story.id}`,
-            severity: "fail",
-            code: "done_gate_incomplete",
-            scope: "story",
-            entityType: "story",
-            entityId: story.id,
-            summary: "La historia figura como done sin satisfacer su gate canónico.",
-            cause: "Falta aceptación, subtareas, evidencia válida o revisión independiente.",
-            impact: "El cierre no es verificable y no debe considerarse una entrega válida.",
-            action: "Reabre la verificación mediante la CLI y completa los gates sin fabricar evidencia.",
-            command: `local-kanban show ${story.id} --json`,
-            verification: "show informa gates.isDone=true y doctor vuelve a healthy.",
-            details: {
-              acceptance: story.doneCriteriaProgress,
-              subtasks: {
-                completed: story.subtasks.filter((subtask) => subtask.done).length,
-                total: story.subtasks.length,
-              },
-              evidenceCount: story.evidence.length,
-              risk: story.risk,
+          .map((story) => explainDoneGate(
+            { id: story.id, status: story.status, risk: story.risk },
+            {
+              isDone: story.isDoneValidated,
+              pendingDependencies: story.blockedByStories
+                .filter((item) => !item.exists || item.status !== "done")
+                .map((item) => item.id),
+              pendingAcceptance: story.doneCriteria
+                .filter((item) => !item.checked)
+                .map((item) => item.id),
+              pendingSubtasks: story.subtasks.filter((item) => !item.done).map((item) => item.id),
+              activeBlockers: [
+                ...(story.blockers ?? []).map((item) => item.type),
+                ...(story.coordination?.blocks ?? []).map((item) => item.type),
+              ],
+              hasEvidence: (story.evidence?.length ?? 0) > 0,
+              hasIndependentReview: story.risk !== "high" || story.isDoneValidated,
             },
-          }));
+          ))
+          .filter(Boolean);
         const issues = [...quarantineIssues, ...operationIssues, ...gateIssues];
 
         const storyCountByEpic = storiesWithEpic.reduce((acc, story) => {
@@ -1005,6 +1024,18 @@ function sendDomainError(res, error, fallback) {
       details: null,
     });
   }
+  if (["ENOENT", "EACCES", "ENOTDIR"].includes(error?.code)) {
+    return res.status(503).json({
+      error: fallback,
+      code: "project_unavailable",
+      detail: "La ruta del proyecto no está disponible o no es accesible.",
+      details: {
+        cause: error.code,
+        nextAction: "Restaura la ruta/permisos y ejecuta local-kanban doctor --json.",
+        command: "local-kanban doctor --json",
+      },
+    });
+  }
   console.error(error);
   return res.status(500).json({
     error: fallback,
@@ -1019,15 +1050,6 @@ function sendMutationError(res, error, fallback) {
     return sendDomainError(res, error, fallback);
   }
   return res.status(400).json({ error: fallback, detail: error.message });
-}
-
-function sendLegacyReadOnly(res, entityType) {
-  const label = entityType === "epic" ? "La épica" : "La historia";
-  return res.status(409).json({
-    error: `${label} usa un formato anterior y está disponible solo en modo lectura.`,
-    code: "legacy_document_read_only",
-    detail: "Migra el documento al esquema v1 antes de modificarlo.",
-  });
 }
 
 function assertCompletePlanningContract(rawPayload, { creating = false } = {}) {
@@ -1074,6 +1096,37 @@ function assertCompleteEpicContract(rawPayload) {
       { details: { missing: ["objective"] }, status: 400 },
     );
   }
+}
+
+function assertLoadedProjectMutationAllowed(project) {
+  if (!project) {
+    throw new DomainError("project_not_found", "Proyecto no encontrado.", { status: 404 });
+  }
+  if (project.health === "unavailable") {
+    const issue = project.degradations.issues[0];
+    throw new DomainError("project_unavailable", "El proyecto no está disponible para mutaciones.", {
+      details: { degradation: issue, nextAction: issue?.action, command: issue?.command },
+      status: 503,
+    });
+  }
+  if (!project.degradations.canProceed) {
+    const issue = project.degradations.issues[0];
+    throw new DomainError("project_degraded", "El proyecto está degradado y las mutaciones quedan bloqueadas.", {
+      details: {
+        canProceed: false,
+        degradations: project.degradations.issues,
+        nextAction: issue?.action,
+        command: issue?.command,
+      },
+      status: 409,
+    });
+  }
+  return project;
+}
+
+async function assertUiProjectMutationAllowed(projectId) {
+  const projects = await loadProjects();
+  return assertLoadedProjectMutationAllowed(projects.find((project) => project.id === projectId));
 }
 
 function assertUiPlanningMutationAllowed(project, story) {
@@ -1159,39 +1212,25 @@ function assertAgentExecutionProgressPreserved(current, next) {
 
 async function tryCanonicalTransition(req, res) {
   const { projectId, storyId } = req.params;
-  const project = await getProjectConfig(projectId);
-  if (!project) {
-    res.status(404).json({ error: "Proyecto no encontrado." });
-    return true;
-  }
-
-  const found = await findStory(projectId, storyId);
-  if (!found) {
-    res.status(404).json({ error: "Historia no encontrada." });
-    return true;
-  }
-  if (found.story.schemaVersion !== 1) {
-    sendLegacyReadOnly(res, "story");
-    return true;
-  }
-
-  const { status, expectedRevision, idempotencyKey, epicId } = req.body ?? {};
-  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
-    res.status(400).json({
-      error: "expectedRevision es obligatorio para documentos v1.",
-      code: "command_invalid",
-    });
-    return true;
-  }
-  if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) {
-    res.status(400).json({
-      error: "idempotencyKey es obligatorio para documentos v1.",
-      code: "command_invalid",
-    });
-    return true;
-  }
-
   try {
+    await assertUiProjectMutationAllowed(projectId);
+    const project = await getProjectConfig(projectId);
+    const found = await findStory(projectId, storyId);
+    if (!project || !found) {
+      res.status(404).json({ error: "Historia no encontrada." });
+      return true;
+    }
+    const { status, expectedRevision, idempotencyKey, epicId } = req.body ?? {};
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+      throw new DomainError("command_invalid", "expectedRevision es obligatorio para documentos v1.", {
+        status: 400,
+      });
+    }
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) {
+      throw new DomainError("command_invalid", "idempotencyKey es obligatorio para documentos v1.", {
+        status: 400,
+      });
+    }
     if (status !== found.story.status) {
       throw new DomainError(
         "agent_workflow_required",
@@ -1253,12 +1292,10 @@ app.post(
     }
 
     try {
+      await assertUiProjectMutationAllowed(projectId);
       const result = await findStory(projectId, storyId);
       if (!result) {
         return res.status(404).json({ error: "Historia no encontrada." });
-      }
-      if (result.story.schemaVersion !== 1) {
-        return sendLegacyReadOnly(res, "story");
       }
       const projectConfig = await getProjectConfig(projectId);
       assertUiChecklistMutationAllowed(projectConfig, result.story, criteriaType);
@@ -1288,12 +1325,10 @@ app.post("/api/projects/:projectId/stories/:storyId/subtasks/:subtaskIndex/toggl
   }
 
   try {
+    await assertUiProjectMutationAllowed(projectId);
     const result = await findStory(projectId, storyId);
     if (!result) {
       return res.status(404).json({ error: "Historia no encontrada." });
-    }
-    if (result.story.schemaVersion !== 1) {
-      return sendLegacyReadOnly(res, "story");
     }
     const projectConfig = await getProjectConfig(projectId);
     assertUiChecklistMutationAllowed(projectConfig, result.story, "subtask");
@@ -1320,6 +1355,7 @@ app.post("/api/projects/:projectId/epics", async (req, res) => {
     if (!projectConfig) {
       return res.status(404).json({ error: "Proyecto no encontrado." });
     }
+    await assertUiProjectMutationAllowed(projectId);
 
     assertCompleteEpicContract(req.body ?? {});
     const payload = sanitizeEpicPayload(req.body ?? {}, projectId);
@@ -1351,10 +1387,8 @@ app.put("/api/projects/:projectId/epics/:epicId", async (req, res) => {
     if (!projectConfig || !existing) {
       return res.status(404).json({ error: "Epica no encontrada." });
     }
+    assertLoadedProjectMutationAllowed(project);
 
-    if (existing.schemaVersion !== 1) {
-      return sendLegacyReadOnly(res, "epic");
-    }
     if (existing.quarantine) {
       const issue = explainQuarantine(existing.quarantine);
       throw new DomainError(
@@ -1406,6 +1440,7 @@ app.post("/api/projects/:projectId/stories", async (req, res) => {
     if (!projectConfig) {
       return res.status(404).json({ error: "Proyecto no encontrado." });
     }
+    await assertUiProjectMutationAllowed(projectId);
 
     assertCompletePlanningContract(req.body ?? {}, { creating: true });
     const payload = sanitizeStoryPayload(req.body ?? {}, projectId);
@@ -1435,10 +1470,8 @@ app.put("/api/projects/:projectId/stories/:storyId", async (req, res) => {
     if (!projectConfig || !existing) {
       return res.status(404).json({ error: "Historia no encontrada." });
     }
+    await assertUiProjectMutationAllowed(projectId);
 
-    if (existing.story.schemaVersion !== 1) {
-      return sendLegacyReadOnly(res, "story");
-    }
     assertUiPlanningMutationAllowed(projectConfig, existing.story);
     assertCompletePlanningContract(req.body ?? {});
     const projectDocument = canonicalProject(projectConfig);
@@ -1467,10 +1500,11 @@ app.put("/api/projects/:projectId/stories/:storyId", async (req, res) => {
 });
 
 app.get("/api/projects/:projectId/stories/:storyId/timeline", async (req, res) => {
-  const project = await getProjectConfig(req.params.projectId);
-  if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
-  const runtime = openRuntime(project.rootPath);
+  let runtime = null;
   try {
+    const project = await getProjectConfig(req.params.projectId);
+    if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
+    runtime = openRuntime(project.rootPath);
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
     return res.json({
       storyId: req.params.storyId,
@@ -1480,15 +1514,16 @@ app.get("/api/projects/:projectId/stories/:storyId/timeline", async (req, res) =
   } catch (error) {
     return sendDomainError(res, error, "No se pudo cargar el timeline.");
   } finally {
-    runtime.close();
+    runtime?.close();
   }
 });
 
 app.post("/api/projects/:projectId/stories/:storyId/coordination/release", async (req, res) => {
-  const project = await getProjectConfig(req.params.projectId);
-  if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
-  const runtime = openRuntime(project.rootPath);
+  let runtime = null;
   try {
+    const project = await getProjectConfig(req.params.projectId);
+    if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
+    runtime = openRuntime(project.rootPath);
     const summary = String(req.body?.summary ?? "").trim();
     const nextAction = String(req.body?.nextAction ?? "").trim();
     if (!summary || !nextAction) {
@@ -1515,15 +1550,16 @@ app.post("/api/projects/:projectId/stories/:storyId/coordination/release", async
   } catch (error) {
     return sendDomainError(res, error, "No se pudo liberar el claim.");
   } finally {
-    runtime.close();
+    runtime?.close();
   }
 });
 
 app.post("/api/projects/:projectId/stories/:storyId/blocks/:blockId/resolve", async (req, res) => {
-  const project = await getProjectConfig(req.params.projectId);
-  if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
-  const runtime = openRuntime(project.rootPath);
+  let runtime = null;
   try {
+    const project = await getProjectConfig(req.params.projectId);
+    if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
+    runtime = openRuntime(project.rootPath);
     const resolution = String(req.body?.resolution ?? "").trim();
     if (!resolution) {
       throw new DomainError(
@@ -1546,7 +1582,7 @@ app.post("/api/projects/:projectId/stories/:storyId/blocks/:blockId/resolve", as
   } catch (error) {
     return sendDomainError(res, error, "No se pudo resolver el bloqueo.");
   } finally {
-    runtime.close();
+    runtime?.close();
   }
 });
 
@@ -1591,17 +1627,6 @@ app.get("*", (req, res) => {
   }
   res.sendFile(path.join(distPath, "index.html"));
 });
-
-const port = process.env.PORT || 4010;
-const host = process.env.HOST || "127.0.0.1";
-const loopbackHosts = new Set(["127.0.0.1", "::1", "localhost"]);
-
-if (!loopbackHosts.has(host) && process.env.LOCAL_KANBAN_ALLOW_REMOTE !== "1") {
-  throw new Error(
-    `HOST=${host} expone Local Kanban fuera de loopback. ` +
-      "Define LOCAL_KANBAN_ALLOW_REMOTE=1 solo si has protegido el acceso externamente.",
-  );
-}
 
 const server = app.listen(port, host, () => {
   console.log(`\x1b[36m%s\x1b[0m`, `Local Kanban is running at http://${host}:${port}`);

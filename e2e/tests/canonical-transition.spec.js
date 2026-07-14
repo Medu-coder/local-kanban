@@ -48,7 +48,7 @@ test.beforeEach(async () => {
       type: "epic",
       project: "sample-project",
       title: "Épica canónica",
-      objective: "Verificar que ninguna ruta legacy muta una épica v1.",
+      objective: "Verificar que ninguna ruta no canónica muta una épica v1.",
     }),
     "utf8",
   );

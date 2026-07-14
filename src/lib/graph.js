@@ -255,23 +255,6 @@ export function buildStoryGraph(project, options = {}) {
       }
     }
 
-    for (const blockerId of story.blocks ?? []) {
-      if (!storyMap.has(blockerId)) {
-        continue;
-      }
-
-      const edgeId = createEdgeId("blocks", `story:${story.id}`, `story:${blockerId}`);
-      if (!seenEdges.has(edgeId)) {
-        edges.push({
-          id: edgeId,
-          kind: "blocks",
-          source: `story:${story.id}`,
-          target: `story:${blockerId}`,
-        });
-        seenEdges.add(edgeId);
-      }
-    }
-
     if (showRelated) {
       for (const relatedId of story.relatedTo ?? []) {
         if (!storyMap.has(relatedId)) {

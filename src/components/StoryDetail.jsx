@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { fetchStoryTimeline, releaseStoryClaim, resolveStoryBlock } from "../lib/api";
+
 function renderSubtask(subtask, index, onToggleSubtask, isUpdatingSubtask, canMutate) {
   if (typeof subtask === "string") {
     return (
@@ -80,6 +83,8 @@ export function StoryDetail({
   onToggleCriterion,
   isUpdatingSubtask,
   isUpdatingCriterion,
+  projectCanProceed = true,
+  projectBlockedReason = "",
   onOperationalChange,
 }) {
   const [timeline, setTimeline] = useState(null);
@@ -116,6 +121,7 @@ export function StoryDetail({
   }
 
   const canPlan =
+    projectCanProceed &&
     story.status === "backlog" &&
     !story.quarantine &&
     !story.coordination?.claim;
@@ -142,7 +148,11 @@ export function StoryDetail({
             type="button"
             data-testid="edit-story-button"
             disabled={!canPlan}
-            title={canPlan ? "Editar planificación" : "Solo se edita en backlog y sin claim activo"}
+            title={canPlan
+              ? "Editar planificación"
+              : !projectCanProceed
+                ? projectBlockedReason
+                : "Solo se edita en backlog y sin claim activo"}
           >
             Editar
           </button>
@@ -218,10 +228,6 @@ export function StoryDetail({
         <div>
           <dt>Agent owner</dt>
           <dd>{story.agentOwner || "Sin agente"}</dd>
-        </div>
-        <div>
-          <dt>Ultima actualizacion</dt>
-          <dd>{story.lastAgentUpdate ? new Date(story.lastAgentUpdate).toLocaleString() : "Sin fecha"}</dd>
         </div>
       </dl>
 
@@ -447,16 +453,9 @@ export function StoryDetail({
       </section>
 
       <section className="detail-section">
-        <h3>Agent status note</h3>
-        <p className="detail-copy">{story.agentStatusNote || "Sin nota operativa."}</p>
-      </section>
-
-      <section className="detail-section">
         <h3>Archivo fuente</h3>
         <code className="file-chip">{story.filePath}</code>
       </section>
     </aside>
   );
 }
-import { useEffect, useState } from "react";
-import { fetchStoryTimeline, releaseStoryClaim, resolveStoryBlock } from "../lib/api";

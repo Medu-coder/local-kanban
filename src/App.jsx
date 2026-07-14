@@ -23,10 +23,9 @@ import { EpicDetail } from "./components/EpicDetail";
 import { DegradationPanel } from "./components/DegradationPanel";
 
 const setupSteps = [
-  "Añade tus proyectos en config/projects.json con rootPath y docsPath.",
-  "En cada proyecto crea AGENTS.md en la raiz importando la skill normativa de Local Kanban.",
-  "En cada proyecto crea docs/kanban/epics y docs/kanban/stories.",
-  "Usa la plantilla de docs/PROJECT_KANBAN_SETUP.md para que otro agente deje el repo preparado.",
+  'Desde la raíz del proyecto ejecuta: local-kanban init --id mi-proyecto --name "Mi proyecto".',
+  "Comprueba el contrato y el DAG con: local-kanban validate.",
+  "Confirma que todas las garantías están sanas con: local-kanban doctor.",
 ];
 const DENSITY_STORAGE_KEY = "local-kanban.ui-density";
 const DEFAULT_DENSITY = "dense";
@@ -147,6 +146,12 @@ export default function App() {
 
   const selectedProject =
     data.projects.find((project) => project.id === selectedProjectId) ?? data.projects[0] ?? null;
+  const projectMutationsAllowed = selectedProject?.degradations?.canProceed !== false;
+  const projectMutationBlockedReason = projectMutationsAllowed
+    ? ""
+    : `Las acciones de planificación están bloqueadas hasta recuperar el proyecto. ${
+        selectedProject?.degradations?.nextAction ?? "Resuelve las garantías indicadas en Atención requerida."
+      }`;
   const projectHealthLabel = selectedProject?.health === "degraded"
     ? "Requiere atención"
     : selectedProject?.health === "unavailable"
@@ -218,7 +223,6 @@ export default function App() {
         story.epicTitle,
         story.assignee,
         story.agentOwner,
-        story.agentStatusNote,
         story.storyType,
         ...(story.labels ?? []),
       ]
@@ -279,13 +283,14 @@ export default function App() {
         });
         setLastSuccessfulSyncAt(new Date());
       } while (refreshQueuedRef.current);
+      return true;
     };
 
     const promise = runRefresh()
       .catch((refreshError) => {
         if (suppressError) {
           setError(refreshError.message);
-          return;
+          return false;
         }
 
         throw refreshError;
@@ -305,8 +310,9 @@ export default function App() {
 
     setSyncState("connecting");
     events.onopen = () => {
-      setSyncState("live");
-      setLastSuccessfulSyncAt(new Date());
+      void refreshProjects({ suppressError: true }).then((refreshed) => {
+        setSyncState(refreshed ? "live" : "retrying");
+      });
     };
     events.onerror = () => {
       setSyncState("retrying");
@@ -317,7 +323,11 @@ export default function App() {
         return;
       }
 
-      void refreshProjects({ suppressError: true });
+      void refreshProjects({ suppressError: true }).then((refreshed) => {
+        if (!refreshed) {
+          setSyncState("retrying");
+        }
+      });
     };
 
     return () => {
@@ -327,6 +337,10 @@ export default function App() {
 
   async function handleSaveStory(payload) {
     if (!selectedProject) {
+      return;
+    }
+    if (!projectMutationsAllowed) {
+      setError(projectMutationBlockedReason);
       return;
     }
 
@@ -387,6 +401,10 @@ export default function App() {
 
   async function handleSaveEpic(payload) {
     if (!selectedProject) {
+      return;
+    }
+    if (!projectMutationsAllowed) {
+      setError(projectMutationBlockedReason);
       return;
     }
 
@@ -520,6 +538,12 @@ export default function App() {
       return;
     }
 
+    if (!projectMutationsAllowed) {
+      setDraggedStory(null);
+      setError(projectMutationBlockedReason);
+      return;
+    }
+
     if (draggedStory.status !== "backlog" || nextStatus !== "backlog") {
       setDraggedStory(null);
       setError("Las transiciones de estado se realizan con la CLI de Local Kanban.");
@@ -588,6 +612,10 @@ export default function App() {
     if (!liveSelectedStory) {
       return;
     }
+    if (!projectMutationsAllowed) {
+      setError(projectMutationBlockedReason);
+      return;
+    }
 
     const previousStory = liveSelectedStory;
     const nextSubtasks = liveSelectedStory.subtasks.map((subtask, index) => {
@@ -639,6 +667,10 @@ export default function App() {
 
   async function handleToggleCriterion(criteriaType, criterionIndex) {
     if (!liveSelectedStory) {
+      return;
+    }
+    if (!projectMutationsAllowed) {
+      setError(projectMutationBlockedReason);
       return;
     }
 
@@ -926,7 +958,13 @@ export default function App() {
               onEpicFilterChange={setEpicFilter}
               executionModeFilter={executionModeFilter}
               onExecutionModeFilterChange={setExecutionModeFilter}
+              managementDisabled={!projectMutationsAllowed}
+              managementDisabledReason={projectMutationBlockedReason}
               onCreateStory={() => {
+                if (!projectMutationsAllowed) {
+                  setError(projectMutationBlockedReason);
+                  return;
+                }
                 requestEditorTransition(() => {
                   setEditorStory(null);
                   setEditorEpic(null);
@@ -940,6 +978,10 @@ export default function App() {
                 });
               }}
               onManageEpics={() => {
+                if (!projectMutationsAllowed) {
+                  setError(projectMutationBlockedReason);
+                  return;
+                }
                 requestEditorTransition(() => {
                   setSelectedStory(null);
                   setSelectedEpic(null);
@@ -982,8 +1024,8 @@ export default function App() {
             <section className="setup-panel">
               <h3>Primer arranque</h3>
               <p>
-                La app está lista, pero todavía no tiene proyectos válidos. Empieza por editar
-                <code> config/projects.json</code> y añade las rutas locales que quieras monitorizar.
+                La app está lista, pero todavía no tiene proyectos registrados. Inicializa cada
+                proyecto desde su raíz Git mediante la CLI canónica:
               </p>
               <ul>
                 {setupSteps.map((step) => (
@@ -1060,6 +1102,10 @@ export default function App() {
                     });
                   }}
                   onQuickCreateStory={(epicId, status) => {
+                    if (!projectMutationsAllowed) {
+                      setError(projectMutationBlockedReason);
+                      return;
+                    }
                     requestEditorTransition(() => {
                       setSelectedStory(null);
                       setSelectedEpic(null);
@@ -1139,6 +1185,10 @@ export default function App() {
                 <EpicManager
                   project={selectedProject}
                   onCreateEpic={() => {
+                    if (!projectMutationsAllowed) {
+                      setError(projectMutationBlockedReason);
+                      return;
+                    }
                     setEditorEpic(null);
                     setEditorStory(null);
                     setSelectedStory(null);
@@ -1148,6 +1198,10 @@ export default function App() {
                     setSidePanelMode("epic-editor");
                   }}
                   onEditEpic={(epic) => {
+                    if (!projectMutationsAllowed) {
+                      setError(projectMutationBlockedReason);
+                      return;
+                    }
                     setEditorEpic(epic);
                     setEditorStory(null);
                     setSelectedStory(null);
@@ -1166,6 +1220,10 @@ export default function App() {
                   stories={selectedProject.stories.filter((story) => story.epicId === liveSelectedEpic.id)}
                   onClose={closeSidePanel}
                   onEdit={(epic) => {
+                    if (!projectMutationsAllowed) {
+                      setError(projectMutationBlockedReason);
+                      return;
+                    }
                     setSelectedEpic(null);
                     setEditorEpic(epic);
                     setIsEditorOpen(true);
@@ -1173,6 +1231,10 @@ export default function App() {
                     setSidePanelMode("epic-editor");
                   }}
                   onCreateStory={(epicId, status) => {
+                    if (!projectMutationsAllowed) {
+                      setError(projectMutationBlockedReason);
+                      return;
+                    }
                     setSelectedEpic(null);
                     setStoryDraft({ epicId, status });
                     setEditorStory(null);
@@ -1186,6 +1248,10 @@ export default function App() {
                   story={liveSelectedStory}
                   onClose={closeSidePanel}
                   onEdit={(story) => {
+                    if (!projectMutationsAllowed) {
+                      setError(projectMutationBlockedReason);
+                      return;
+                    }
                     setSelectedEpic(null);
                     setSelectedStory(null);
                     setEditorStory(story);
@@ -1198,6 +1264,8 @@ export default function App() {
                   onToggleCriterion={handleToggleCriterion}
                   isUpdatingSubtask={isUpdatingSubtask}
                   isUpdatingCriterion={isUpdatingCriterion}
+                  projectCanProceed={projectMutationsAllowed}
+                  projectBlockedReason={projectMutationBlockedReason}
                   onOperationalChange={() => refreshProjects({ suppressError: true })}
                 />
               )}

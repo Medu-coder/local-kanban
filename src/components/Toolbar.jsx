@@ -6,6 +6,8 @@ export function Toolbar({
   onEpicFilterChange,
   executionModeFilter,
   onExecutionModeFilterChange,
+  managementDisabled = false,
+  managementDisabledReason = "",
   onCreateStory,
   onManageEpics,
   visibleCount,
@@ -14,6 +16,8 @@ export function Toolbar({
   onCollapseAll,
   supplementalControls,
 }) {
+  const managementNoticeId = "toolbar-management-disabled-reason";
+
   return (
     <section className="toolbar" data-testid="toolbar">
       <div className="toolbar__layout">
@@ -63,6 +67,9 @@ export function Toolbar({
             className="primary-button toolbar__button"
             type="button"
             onClick={onCreateStory}
+            disabled={managementDisabled}
+            aria-describedby={managementDisabled ? managementNoticeId : undefined}
+            title={managementDisabled ? managementDisabledReason : "Crear una historia"}
             data-sidepanel-action="true"
             data-testid="create-story-button"
           >
@@ -73,6 +80,9 @@ export function Toolbar({
             className="ghost-button toolbar__button"
             type="button"
             onClick={onManageEpics}
+            disabled={managementDisabled}
+            aria-describedby={managementDisabled ? managementNoticeId : undefined}
+            title={managementDisabled ? managementDisabledReason : "Gestionar épicas"}
             data-sidepanel-action="true"
             data-testid="manage-epics-button"
           >
@@ -100,6 +110,12 @@ export function Toolbar({
               </button>
             ) : null}
           </div>
+
+          {managementDisabled ? (
+            <p id={managementNoticeId} className="warning-banner" role="status">
+              <strong>Planificación bloqueada.</strong> {managementDisabledReason}
+            </p>
+          ) : null}
 
           {supplementalControls ? <div className="toolbar__supplemental">{supplementalControls}</div> : null}
         </div>
