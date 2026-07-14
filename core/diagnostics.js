@@ -59,6 +59,11 @@ function inspectSqlite(runtime) {
   );
   const quarantined = operations.quarantined ?? 0;
   const pending = operations.pending ?? 0;
+  const entityQuarantines = Number(
+    runtime.db
+      .prepare("SELECT COUNT(*) AS count FROM entity_quarantine WHERE resolved_at IS NULL")
+      .get().count,
+  );
   if (integrity.length !== 1 || integrity[0] !== "ok") {
     return check(
       "sqlite",
@@ -68,12 +73,12 @@ function inspectSqlite(runtime) {
       "Conserva runtime.sqlite y escala recuperación; no lo edites manualmente.",
     );
   }
-  if (quarantined > 0 || pending > 0) {
+  if (quarantined > 0 || pending > 0 || entityQuarantines > 0) {
     return check(
       "sqlite",
       "fail",
       "SQLite es íntegra, pero conserva operaciones sin reconciliar.",
-      { integrity, operations },
+      { integrity, operations, entityQuarantines },
       "Resuelve las operaciones pendientes o en cuarentena antes de continuar.",
     );
   }
@@ -100,6 +105,9 @@ function collectMetrics(runtime) {
     attemptsOpen: count("SELECT COUNT(*) AS count FROM attempts WHERE outcome IS NULL"),
     checkpoints: count("SELECT COUNT(*) AS count FROM checkpoints"),
     openBlocks: count("SELECT COUNT(*) AS count FROM blocks WHERE status = 'open'"),
+    quarantinedEntities: count(
+      "SELECT COUNT(*) AS count FROM entity_quarantine WHERE resolved_at IS NULL",
+    ),
   };
 }
 

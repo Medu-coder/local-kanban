@@ -77,3 +77,24 @@ test("doctor avisa sin fallar si la skill no está instalada", async () => {
     await fixture.cleanup();
   }
 });
+
+test("doctor contabiliza cuarentenas de documentos manuales", async () => {
+  const fixture = await createProjectFixture();
+  const runtime = openRuntime(fixture.rootPath);
+  try {
+    await gitInit(fixture.rootPath);
+    runtime.quarantineEntity({
+      entityType: "story",
+      entityId: "STO-BROKEN",
+      reason: "invalid_document",
+    });
+    runtime.close();
+    const result = await doctorProject({ project: fixture.project, checkSkill: false });
+    assert.equal(result.ok, false);
+    assert.equal(result.metrics.quarantinedEntities, 1);
+    assert.equal(result.checks.find((item) => item.id === "sqlite").status, "fail");
+  } finally {
+    try { runtime.close(); } catch {}
+    await fixture.cleanup();
+  }
+});
