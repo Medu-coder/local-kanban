@@ -181,15 +181,20 @@ function createResult(entityType, entity) {
 
 async function assertStoryRelationships(project, candidate) {
   const validation = await validateProjectDocuments(project);
-  if (!validation.ok) {
-    throw new DomainError("project_invalid", "El proyecto debe ser válido antes de mutar relaciones.", {
-      details: { invalid: validation.invalid },
-      status: 409,
-    });
-  }
   if (candidate.epic && !validation.epics.some((epic) => epic.id === candidate.epic)) {
     throw new DomainError("orphan_epic", "La historia referencia una épica inexistente.", {
       details: { storyId: candidate.id, epicId: candidate.epic },
+      status: 409,
+    });
+  }
+  const validStoryIds = new Set(validation.stories.map((story) => story.id));
+  validStoryIds.add(candidate.id);
+  const orphaned = candidate.dependencies
+    .filter((dependency) => !validStoryIds.has(dependency.story_id))
+    .map((dependency) => ({ storyId: candidate.id, dependencyId: dependency.story_id }));
+  if (orphaned.length > 0) {
+    throw new DomainError("orphan_dependency", "La historia referencia dependencias inexistentes.", {
+      details: { orphaned },
       status: 409,
     });
   }
@@ -197,15 +202,10 @@ async function assertStoryRelationships(project, candidate) {
     ...validation.stories.filter((story) => story.id !== candidate.id),
     candidate,
   ]);
-  if (graph.orphaned.length > 0) {
-    throw new DomainError("orphan_dependency", "La historia referencia dependencias inexistentes.", {
-      details: { orphaned: graph.orphaned },
-      status: 409,
-    });
-  }
-  if (graph.cycles.length > 0) {
+  const introducedCycles = graph.cycles.filter((cycle) => cycle.includes(candidate.id));
+  if (introducedCycles.length > 0) {
     throw new DomainError("dependency_cycle", "La mutación introduce un ciclo hard.", {
-      details: { cycles: graph.cycles },
+      details: { cycles: introducedCycles },
       status: 409,
     });
   }

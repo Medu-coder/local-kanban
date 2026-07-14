@@ -713,20 +713,16 @@ async function findStory(projectId, storyId) {
   return { project, story };
 }
 
-function canMoveToDeveloping(story) {
-  return story.status !== "developing" ? story.isReadyForDeveloping : true;
-}
-
-async function validateStoryStatusTransition(projectId, storyId, nextStatus, storyOverride = null) {
+async function validateStoryStatusTransition(projectId, storyId, nextStatus) {
   if (nextStatus !== "developing") {
     return;
   }
 
   const projects = await loadProjects();
   const project = projects.find((item) => item.id === projectId);
-  const story = storyOverride ?? project?.stories.find((item) => item.id === storyId);
+  const story = project?.stories.find((item) => item.id === storyId);
 
-  if (!project || !story || !canMoveToDeveloping(story)) {
+  if (!project || !story || (story.status !== "developing" && !story.isReadyForDeveloping)) {
     throw new Error("La historia no esta lista para pasar a developing.");
   }
 }
@@ -1030,7 +1026,7 @@ app.post("/api/projects/:projectId/stories/:storyId/status", async (req, res) =>
       return res.status(404).json({ error: "Historia no encontrada." });
     }
 
-    await validateStoryStatusTransition(projectId, storyId, status, result.story);
+    await validateStoryStatusTransition(projectId, storyId, status);
 
     const raw = await fs.readFile(result.story.filePath, "utf8");
     const parsed = matter(raw);
@@ -1072,7 +1068,7 @@ app.post("/api/projects/:projectId/stories/:storyId/move", async (req, res) => {
       status,
       epicId: epicId ? String(epicId).trim() : null,
     };
-    await validateStoryStatusTransition(projectId, storyId, status, nextStory);
+    await validateStoryStatusTransition(projectId, storyId, status);
 
     const raw = await fs.readFile(result.story.filePath, "utf8");
     const parsed = matter(raw);

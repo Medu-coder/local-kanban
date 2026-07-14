@@ -561,3 +561,27 @@ test("CRUD rechaza épicas y dependencias huérfanas y ciclos antes de persistir
     await fixture.cleanup();
   }
 });
+
+test("una entidad inválida aislada no bloquea crear una historia sana", async () => {
+  const fixture = await createProjectFixture();
+  try {
+    await fs.writeFile(
+      path.join(fixture.rootPath, "docs/kanban/stories/STO-BROKEN.md"),
+      "---\nschema_version: 999\nid: STO-BROKEN\n---\n",
+      "utf8",
+    );
+
+    const result = await createStoryCommand({
+      project: fixture.project,
+      story: createStory({ id: "STO-HEALTHY" }),
+      expectedRevision: 0,
+      idempotencyKey: "healthy-beside-quarantine",
+      actor,
+    });
+
+    assert.equal(result.storyId, "STO-HEALTHY");
+    assert.equal((await readCanonicalStory(fixture.project, "STO-HEALTHY")).entity.revision, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+});

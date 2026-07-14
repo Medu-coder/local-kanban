@@ -79,22 +79,26 @@ test("impide mover a developing una historia bloqueada", async ({ page }) => {
   await expect(page.getByTestId("dropzone-EPI-002-developing")).not.toContainText("Historia bloqueada por otra");
 });
 
-test("activa ready checklist manual y permite pasar a developing", async ({ page }) => {
+test("una historia legacy en cuarentena no pasa a developing aunque complete ready", async ({ page }) => {
   await page.getByTestId("story-card-STO-001").click();
   await page.getByText("Variables de entorno disponibles").click();
-  await expect(page.getByTestId("story-detail-panel").getByText(/^Ready$/)).toBeVisible();
+  await expect(page.getByTestId("story-detail-panel")).toContainText("Cuarentena");
+  await expect(page.getByTestId("story-detail-panel").getByText(/^Ready$/)).toHaveCount(0);
   await page.getByTestId("close-story-detail-button").click();
 
   await dragStory(page, "STO-001", "EPI-001", "developing");
 
-  await expect(page.getByTestId("dropzone-EPI-001-developing")).toContainText("Preparar contrato agentico");
+  await expect(page.getByTestId("dropzone-EPI-001-backlog")).toContainText("Preparar contrato agentico");
+  await expect(page.getByTestId("dropzone-EPI-001-developing")).not.toContainText("Preparar contrato agentico");
 });
 
-test("recalcula done checklist y muestra validación de cierre", async ({ page }) => {
+test("recalcula done checklist legacy sin certificar cierre en cuarentena", async ({ page }) => {
   await page.getByTestId("story-card-STO-001").click();
   await page.getByText("Pintar indicadores").click();
   await page.getByText("Validacion funcional completada").click();
-  await expect(page.getByText("Done validado")).toBeVisible();
+  await expect(page.getByTestId("story-detail-panel")).toContainText("Cuarentena");
+  await expect(page.getByTestId("story-detail-panel").getByText("2/2")).toBeVisible();
+  await expect(page.getByText("Done validado")).toHaveCount(0);
 });
 
 test("filtra por épica y busca historias por texto", async ({ page }) => {
