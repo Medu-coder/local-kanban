@@ -16,7 +16,7 @@
     "dev:client": "vite",
     "dev:server": "node --watch server/index.js",
     "build": "vite build",
-    "start": "npm run build && pm2 start ecosystem.config.cjs",
+    "start": "node scripts/check-production-build.js && pm2 startOrRestart ecosystem.config.cjs --update-env",
     "stop": "pm2 stop ecosystem.config.cjs",
     "restart": "pm2 restart ecosystem.config.cjs",
     "status": "pm2 status",
@@ -25,25 +25,25 @@
     "skill:install": "node scripts/manage-skill.js install",
     "skill:verify": "node scripts/manage-skill.js verify",
     "skill:smoke": "node scripts/verify-skill-consumer.js",
+    "skill:smoke:isolated": "node scripts/verify-skill-isolated.js",
     "check": "node scripts/check-static.js",
     "test:unit": "node --test test/*.test.js",
     "test:quality": "node --test test/diagnostics.test.js test/evals.test.js",
     "test:dogfood": "node --test test/cli.test.js test/diagnostics.test.js test/evals.test.js test/workflow-cli.test.js test/workflow-commands.test.js",
-    "test:skill": "node --test test/skill-management.test.js && npm run skill:smoke",
+    "test:skill": "node --test test/skill-management.test.js && npm run skill:smoke:isolated",
     "eval": "node scripts/eval-agent-flow.js",
     "benchmark": "node scripts/benchmark.js",
-    "release:verify": "npm run check && npm run test:unit && npm run test:quality && npm run eval && npm run benchmark && npm run build && npm run test:e2e && npm run skill:verify -- --local && npm run skill:smoke",
+    "release:verify": "npm run check && npm run test:unit && npm run test:quality && npm run eval && npm run benchmark && npm audit --audit-level=high && npm run build && npm run test:e2e && npm run test:skill",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "ajv": "^8.20.0",
-    "d3-drag": "^3.0.0",
     "d3-force": "^3.0.0",
-    "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
     "express": "^4.21.2",
     "gray-matter": "^4.0.3",
+    "pm2": "^7.0.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -51,7 +51,6 @@
     "@playwright/test": "^1.59.1",
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^9.1.2",
-    "pm2": "^7.0.3",
     "vite": "^8.1.4"
   }
 }

@@ -37,9 +37,14 @@ function parseProjectsArg() {
   return Array.isArray(parsed) ? parsed : null;
 }
 
-function parseNodeMajorVersion(version) {
+function parseNodeVersion(version) {
   const normalized = version.startsWith("v") ? version.slice(1) : version;
-  return Number.parseInt(normalized.split(".")[0] ?? "0", 10);
+  return normalized.split(".").slice(0, 3).map((part) => Number.parseInt(part ?? "0", 10));
+}
+
+function supportsRequiredNodeVersion(version) {
+  const [major = 0, minor = 0, patch = 0] = parseNodeVersion(version);
+  return major > 22 || (major === 22 && (minor > 13 || (minor === 13 && patch >= 0)));
 }
 
 function slugify(value) {
@@ -204,10 +209,8 @@ async function runGuidedConfiguration(configStatus) {
 }
 
 async function main() {
-  const nodeMajor = parseNodeMajorVersion(process.version);
-
-  if (nodeMajor < 18) {
-    console.error("Local Kanban requiere Node.js 18 o superior.");
+  if (!supportsRequiredNodeVersion(process.version)) {
+    console.error("Local Kanban requiere Node.js 22.13.0 o superior.");
     process.exit(1);
   }
 
