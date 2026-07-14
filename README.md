@@ -70,6 +70,11 @@ npm run dev
 
 La UI lee únicamente los proyectos registrados. `config/projects.json` puede inspeccionarse o corregirse manualmente por un humano en una recuperación excepcional, pero no forma parte del flujo normal de agentes.
 
+La UI funciona como control plane humano: permite crear contratos completos y reorganizar historias
+no reclamadas dentro de `backlog`. Las transiciones, checks y mutaciones durante un intento activo
+se realizan exclusivamente mediante `local-kanban` con claim, attempt y fencing vigentes. Las
+acciones excepcionales de abandono o resolución requieren confirmación explícita y quedan auditadas.
+
 La instancia de producción local escucha en `127.0.0.1:4010`. No expongas el servidor en una interfaz de red: la API no incorpora autenticación ni TLS y su modelo de confianza es exclusivamente local.
 
 ## Modelo funcional

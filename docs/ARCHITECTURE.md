@@ -53,7 +53,7 @@ El orquestador es el único rol que integra y cierra. Los especialistas operan u
 
 `server/index.js` adapta el núcleo a HTTP, sirve el build de Vite y publica refrescos mediante SSE. La API es una interfaz local para la SPA, no la interfaz de automatización para agentes.
 
-`src/` contiene una SPA React con tablero, grafo, detalle, edición, timeline y acciones administrativas acotadas. Las mutaciones de UI incluyen revisión e idempotencia y vuelven a pasar por las mismas invariantes del núcleo. Los watchers reconcilian cambios externos válidos y SSE actualiza la vista sin recarga manual.
+`src/` contiene una SPA React con tablero, grafo, detalle, edición, timeline y acciones administrativas acotadas. La UI es un control plane humano, no una segunda interfaz de ejecución para agentes: permite planificar contratos completos mientras una historia permanece en `backlog` y sin claim, pero reserva transiciones, checks y trabajo reclamado a la CLI con attempt y fencing. La reorganización por drag solo cambia la épica de historias no reclamadas en backlog. Las excepciones humanas destructivas requieren confirmación y quedan auditadas. Los watchers reconcilian cambios externos válidos y SSE actualiza la vista sin recarga manual.
 
 El listener de producción se limita por defecto a `127.0.0.1:4010`. No hay autenticación ni TLS; el servidor rechaza otros hosts salvo opt-in explícito con `LOCAL_KANBAN_ALLOW_REMOTE=1`, que solo debe usarse detrás de una protección externa adecuada.
 
