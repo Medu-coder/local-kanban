@@ -8,6 +8,7 @@ import { diagnoseProject } from "./diagnostics.js";
 import { resolveProjectPaths, readFileLimited } from "./paths.js";
 import { getRegisteredProject } from "./project.js";
 import { openRuntime } from "./runtime.js";
+import { reconcileProjectDocuments } from "./reconciliation.js";
 import { validateEpic, validateProject, validateStory } from "./schema.js";
 import {
   persistStory,
@@ -276,11 +277,12 @@ export async function transitionStoryCommand(options) {
 
 export async function doctorProject(options = {}) {
   const project = options.project ?? (await getRegisteredProject(options));
-  const validation = await validateProjectDocuments(project);
   const paths = await resolveProjectPaths(project);
   const runtime = openRuntime(paths.rootPath);
   try {
     const recovery = await recoverPendingOperations(paths, runtime);
+    const reconciliation = await reconcileProjectDocuments(paths, runtime, { actor: "doctor" });
+    const validation = await validateProjectDocuments(project);
     const diagnosis = await diagnoseProject({
       validation,
       recovery,
@@ -297,7 +299,7 @@ export async function doctorProject(options = {}) {
         counts: validation.counts,
         invalid: validation.invalid,
       },
-      runtime: { filePath: runtime.filePath, recovery },
+      runtime: { filePath: runtime.filePath, recovery, reconciliation },
     };
   } finally {
     runtime.close();

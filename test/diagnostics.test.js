@@ -98,3 +98,30 @@ test("doctor contabiliza cuarentenas de documentos manuales", async () => {
     await fixture.cleanup();
   }
 });
+
+test("doctor reconcilia y pone en cuarentena un Markdown inválido sin depender de la UI", async () => {
+  const fixture = await createProjectFixture();
+  try {
+    await gitInit(fixture.rootPath);
+    const storyPath = path.join(fixture.rootPath, "docs", "kanban", "stories", "STO-BROKEN.md");
+    await fs.writeFile(storyPath, "---\nid: STO-OTHER\ntype: story\n---\n", "utf8");
+
+    const result = await doctorProject({ project: fixture.project, checkSkill: false });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.validation.ok, false);
+    assert.equal(result.metrics.quarantinedEntities, 1);
+    assert.equal(result.checks.find((item) => item.id === "schema_dag").status, "fail");
+    assert.equal(result.checks.find((item) => item.id === "sqlite").status, "fail");
+    assert.deepEqual(result.runtime.reconciliation, [
+      {
+        status: "quarantined",
+        entityType: "story",
+        entityId: "STO-BROKEN",
+        reason: "invalid_document",
+      },
+    ]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
