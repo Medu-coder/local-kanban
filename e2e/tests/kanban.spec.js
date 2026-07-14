@@ -115,6 +115,45 @@ test("filtra por épica y busca historias por texto", async ({ page }) => {
   await expect(page.getByTestId("story-card-STO-001")).toHaveCount(0);
 });
 
+test("mantiene los controles del toolbar accesibles en viewport móvil", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const controls = [
+    ["Buscar", page.getByRole("textbox", { name: "Buscar" })],
+    ["Épica", page.getByRole("combobox", { name: "Épica" })],
+    ["Modo", page.getByRole("combobox", { name: "Modo" })],
+    ["Nueva historia", page.getByTestId("create-story-button")],
+  ];
+
+  for (const [, control] of controls) {
+    await expect(control).toBeVisible();
+  }
+
+  const boxes = await Promise.all(controls.map(([, control]) => control.boundingBox()));
+  for (const [index, box] of boxes.entries()) {
+    expect(box, `${controls[index][0]} debe tener geometría visible`).not.toBeNull();
+    expect(box.x, `${controls[index][0]} no debe salir por la izquierda`).toBeGreaterThanOrEqual(0);
+    expect(box.y, `${controls[index][0]} no debe salir por arriba`).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, `${controls[index][0]} no debe salir por la derecha`).toBeLessThanOrEqual(390);
+    expect(box.y + box.height, `${controls[index][0]} no debe salir por abajo`).toBeLessThanOrEqual(844);
+  }
+
+  for (let leftIndex = 0; leftIndex < boxes.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < boxes.length; rightIndex += 1) {
+      const left = boxes[leftIndex];
+      const right = boxes[rightIndex];
+      const overlap = left.x < right.x + right.width &&
+        left.x + left.width > right.x &&
+        left.y < right.y + right.height &&
+        left.y + left.height > right.y;
+      expect(
+        overlap,
+        `${controls[leftIndex][0]} no debe solaparse con ${controls[rightIndex][0]}`,
+      ).toBe(false);
+    }
+  }
+});
+
 test("crea y edita una épica desde el gestor", async ({ page }) => {
   await page.getByTestId("manage-epics-button").click();
   await expect(page.getByTestId("epic-manager-panel")).toBeVisible();

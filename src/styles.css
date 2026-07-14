@@ -2549,11 +2549,19 @@ pre {
   }
 
   .topbar__stats-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .toolbar__summary {
     grid-template-columns: 1fr;
+  }
+
+  .toolbar__row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar__row .field:first-child {
+    grid-column: 1 / -1;
   }
 
   .toolbar__supplemental {
