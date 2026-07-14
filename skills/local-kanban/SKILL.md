@@ -18,7 +18,7 @@ Coordinar trabajo de desarrollo agéntico manteniendo el Kanban como contrato op
 7. Mantener trazabilidad suficiente para reanudar sin consultar el chat anterior.
 8. Reservar la edición manual de Markdown para recuperación o mantenimiento excepcional; reconciliarla antes de continuar.
 
-Antes de operar, ejecutar `local-kanban --help` y usar únicamente los subcomandos que anuncie la versión instalada. Si la CLI no está disponible, detener la mutación y reportar el problema. No sustituirla por edición directa de Markdown, SQLite o llamadas HTTP improvisadas.
+Antes de operar, ejecutar `local-kanban --help` y usar únicamente los subcomandos que anuncie la versión instalada. Si la CLI no está disponible, resolver la fuente de esta skill con `realpath ~/.agents/skills/local-kanban`, ejecutar `npm link` desde la raíz de ese checkout y repetir el preflight. Si la reparación falla, detener la mutación y reportar el problema. No sustituirla por edición directa de Markdown, SQLite o llamadas HTTP improvisadas.
 
 ## Activación
 
@@ -27,9 +27,10 @@ Antes de operar, ejecutar `local-kanban --help` y usar únicamente los subcomand
 3. Detectar el rol actual:
    - **Orquestador:** no se ha recibido ownership exclusivo de una historia concreta.
    - **Especialista:** se ha recibido una historia, alcance y ownership concretos.
-4. Inicializar, validar o diagnosticar el proyecto solo con los comandos que exponga `local-kanban --help`.
-5. Consultar mediante la CLI solo el estado necesario para el rol.
-6. Mantener una cápsula operativa compacta con:
+4. Como orquestador, si el repositorio todavía no está registrado, ejecutar `local-kanban init --json`; el comando deriva ID y nombre de la raíz Git, instala el contrato local de la metodología y es idempotente. Un especialista no reinicializa el proyecto: escala la ausencia del contrato.
+5. Validar o diagnosticar el proyecto solo con los comandos que exponga `local-kanban --help`.
+6. Consultar mediante la CLI solo el estado necesario para el rol.
+7. Mantener una cápsula operativa compacta con:
    - historia, estado, owner e intento;
    - objetivo y scope;
    - gates, bloqueos y restricciones relevantes;
@@ -68,7 +69,7 @@ Crear trabajo nuevo mediante `create-epic` y `create-story`; no generar sus Mark
 
 1. Reconciliar repositorio, estado durable y runtime antes de asignar trabajo.
 2. Resolver resultados, leases expirados, bloqueos y conflictos pendientes.
-3. Consultar historias elegibles, entregas pendientes y trabajo que requiere intervención con `local-kanban next --json`. La respuesta separa `stories` para implementación, `verification` para revisión/cierre y `attention` para claims stale, bloqueos o intentos liberados que deben reanudarse. Las colas se ordenan de forma determinista:
+3. Consultar historias elegibles, entregas pendientes y trabajo que requiere intervención con `local-kanban next --json`. La respuesta separa `stories` para implementación, `verification` para revisión/cierre —incluidos los handoffs activos en `testing`— y `attention` para claims stale, bloqueos o intentos liberados que deben reanudarse. Seguir el `nextAction` de cada cápsula. Las colas se ordenan de forma determinista:
    - `rank` ascendente;
    - prioridad `high`, `medium`, `low`;
    - mayor número de historias desbloqueadas;

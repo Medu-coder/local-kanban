@@ -85,6 +85,7 @@ Las historias usan IDs `STO-*`; las épicas, `EPI-*`. Readiness, bloqueos, claim
 ```bash
 npm run test:unit
 npm run test:skill
+npm run skill:smoke
 npm run test:quality
 npm run test:dogfood
 npm run eval
@@ -99,7 +100,8 @@ checkpoint/handoff, bloqueo humano, fencing y cierre) y `benchmark` ejecuta un
 fixture reproducible de 1.000 historias. Ambos son gates de CI.
 
 Antes de versionar la metodología, `npm run release:verify` ejecuta todos los gates y
-confirma además que la skill personal sigue enlazada al fichero canónico de este checkout.
+confirma además que la skill personal sigue enlazada al fichero canónico de este checkout y
+completa un flujo real desde un repositorio consumidor temporal mediante la CLI global instalada.
 
 ## Documentación
 

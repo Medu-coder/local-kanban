@@ -317,6 +317,13 @@ test("CLI cubre planificación completa sin editar Markdown manualmente", async 
     await runCli(["resolve", "STO-001", ...envelope, "--block-id", blocked.block.id], rootPath, configPath);
     await runCli(["checkpoint", "STO-001", ...envelope, "--summary", "Implementación lista"], rootPath, configPath);
     await runCli(["validate", "STO-001", ...envelope], worktree.path, configPath);
+    const verificationQueue = JSON.parse(
+      (await runCli(["next", "--json"], rootPath, configPath)).stdout,
+    );
+    assert.equal(verificationQueue.verificationCount, 1);
+    assert.equal(verificationQueue.verification[0].story.id, "STO-001");
+    assert.equal(verificationQueue.verification[0].execution.attemptId, attempt);
+    assert.equal(verificationQueue.verification[0].nextAction, "complete STO-001 using active handoff");
     const specialistCommit = (await git(worktree.path, ["rev-parse", "HEAD"])).stdout.trim();
     await git(rootPath, ["cherry-pick", specialistCommit]);
     const integratedCommit = (await git(rootPath, ["rev-parse", "HEAD"])).stdout.trim();

@@ -33,6 +33,7 @@ Desde este repositorio:
 ```bash
 npm run skill:install
 npm run skill:verify
+npm run skill:smoke
 ```
 
 La instalación crea o repara de forma idempotente:
@@ -125,6 +126,8 @@ npm run skill:verify
 ```
 
 Si la verificación del symlink falla, ejecuta `npm run skill:install` y vuelve a verificar.
+`skill:smoke` comprueba además que la CLI global apunta a este checkout, inicializa un
+repositorio consumidor temporal y completa una historia real hasta `done` con `doctor healthy`.
 
 Antes de publicar una actualización del Kanban ejecuta también:
 

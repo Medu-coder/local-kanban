@@ -234,15 +234,28 @@ export async function nextStoriesCommand(options = {}) {
       wipLimit: held.length + limit,
     });
     const verification = validation.stories
-      .filter((story) => story.status === "testing" && !held.includes(story.id))
+      .filter((story) => {
+        const state = coordination.get(story.id);
+        return story.status === "testing" && state.claim?.status !== "stale";
+      })
       .sort(workflowOrder)
       .slice(0, limit)
-      .map((story) => buildOperationalCapsule({
-        story,
-        coordination: coordination.get(story.id),
-        gates: evaluateStoryGates(story, dependencyStatuses(story, validation.stories)),
-        nextAction: story.risk === "high" ? `claim ${story.id} as independent verifier` : `claim ${story.id} as orchestrator`,
-      }));
+      .map((story) => {
+        const state = coordination.get(story.id);
+        const nextAction = state.claim
+          ? story.risk === "high"
+            ? `release active claim for ${story.id} before independent review`
+            : `complete ${story.id} using active handoff`
+          : story.risk === "high"
+            ? `claim ${story.id} as independent verifier`
+            : `claim ${story.id} as orchestrator`;
+        return buildOperationalCapsule({
+          story,
+          coordination: state,
+          gates: evaluateStoryGates(story, dependencyStatuses(story, validation.stories)),
+          nextAction,
+        });
+      });
     const attention = validation.stories
       .filter((story) => {
         const state = coordination.get(story.id);

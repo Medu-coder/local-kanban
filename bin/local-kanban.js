@@ -27,6 +27,7 @@ const help = `Local Kanban
 
 Uso:
   local-kanban init [--id ID] [--name NAME] [--docs-path PATH] [--json]
+    ID: slug minúsculo de 1-50 caracteres ([a-z0-9], guiones internos permitidos)
   local-kanban create-epic EPI-ID --title TEXT --objective TEXT [--labels a,b] [--json]
   local-kanban create-story STO-ID --title TEXT --objective TEXT --acceptance a,b
     --validation COMMAND[,COMMAND] --context FILE[,FILE] [--scope a,b] [--subtasks a,b]
