@@ -224,3 +224,61 @@ test("la API rechaza Origins ajenos a loopback", async ({ request }) => {
   expect(response.status()).toBe(403);
   expect(await response.json()).toMatchObject({ code: "local_origin_rejected" });
 });
+
+test("la envolvente HTTP aplica headers defensivos y errores JSON acotados", async ({ request }) => {
+  const epicsUrl = "http://127.0.0.1:4011/api/projects/sample-project/epics";
+  const health = await request.get("http://127.0.0.1:4011/api/health");
+  expect(health.status()).toBe(200);
+  expect(health.headers()).toMatchObject({
+    "content-security-policy": "frame-ancestors 'none'",
+    "x-frame-options": "DENY",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+  });
+  expect(health.headers()["x-powered-by"]).toBeUndefined();
+
+  const invalidHostBeforeJson = await request.post(epicsUrl, {
+    headers: {
+      Host: "attacker.example",
+      "Content-Type": "application/json",
+    },
+    data: "{",
+  });
+  expect(invalidHostBeforeJson.status()).toBe(403);
+  expect(await invalidHostBeforeJson.json()).toMatchObject({ code: "local_origin_rejected" });
+
+  const oversizedBody = "a".repeat(128 * 1024);
+  const invalidOriginBeforeSize = await request.post(epicsUrl, {
+    headers: {
+      Origin: "https://attacker.example",
+      "Content-Type": "application/json",
+    },
+    data: oversizedBody,
+  });
+  expect(invalidOriginBeforeSize.status()).toBe(403);
+  expect(await invalidOriginBeforeSize.json()).toMatchObject({ code: "local_origin_rejected" });
+
+  const malformed = await request.post(epicsUrl, {
+    headers: { "Content-Type": "application/json" },
+    data: "{",
+  });
+  expect(malformed.status()).toBe(400);
+  expect(malformed.headers()["content-type"]).toContain("application/json");
+  expect(await malformed.json()).toEqual({
+    ok: false,
+    code: "invalid_json",
+    error: "El cuerpo de la petición no contiene JSON válido.",
+  });
+
+  const oversized = await request.post(epicsUrl, {
+    headers: { "Content-Type": "application/json" },
+    data: oversizedBody,
+  });
+  expect(oversized.status()).toBe(413);
+  expect(oversized.headers()["content-type"]).toContain("application/json");
+  expect(await oversized.json()).toEqual({
+    ok: false,
+    code: "payload_too_large",
+    error: "El cuerpo de la petición supera el límite permitido.",
+  });
+});

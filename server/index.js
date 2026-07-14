@@ -63,7 +63,14 @@ if (!loopbackHosts.has(host) && !remoteAccessAllowed) {
   );
 }
 
-app.use(express.json());
+app.disable("x-powered-by");
+app.use((_req, res, next) => {
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
 app.use("/api", (req, res, next) => {
   if (remoteAccessAllowed) {
     next();
@@ -90,6 +97,7 @@ app.use("/api", (req, res, next) => {
   }
   next();
 });
+app.use(express.json());
 
 function normalizeId(value) {
   return String(value ?? "")
@@ -1635,6 +1643,35 @@ app.get("*", (req, res) => {
     return res.status(404).json({ error: "API endpoint not found" });
   }
   res.sendFile(path.join(distPath, "index.html"));
+});
+
+app.use((error, req, res, next) => {
+  if (!req.path.startsWith("/api/")) {
+    next(error);
+    return;
+  }
+
+  if (error?.type === "entity.too.large" || error?.status === 413) {
+    return res.status(413).json({
+      ok: false,
+      code: "payload_too_large",
+      error: "El cuerpo de la petición supera el límite permitido.",
+    });
+  }
+
+  if (error?.type === "entity.parse.failed" || (error instanceof SyntaxError && error?.status === 400)) {
+    return res.status(400).json({
+      ok: false,
+      code: "invalid_json",
+      error: "El cuerpo de la petición no contiene JSON válido.",
+    });
+  }
+
+  return res.status(500).json({
+    ok: false,
+    code: "internal_error",
+    error: "La petición no pudo procesarse.",
+  });
 });
 
 const server = app.listen(port, host, () => {
