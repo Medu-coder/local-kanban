@@ -131,6 +131,17 @@ const runtimeSchema = `
 
   CREATE INDEX IF NOT EXISTS blocks_open_idx
     ON blocks (story_id, status, created_at);
+
+  CREATE TABLE IF NOT EXISTS entity_quarantine (
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    details_json TEXT NOT NULL,
+    detected_at TEXT NOT NULL,
+    resolved_at TEXT,
+    resolved_by TEXT,
+    PRIMARY KEY (entity_type, entity_id)
+  );
 `;
 
 function now() {
@@ -989,6 +1000,121 @@ export class RuntimeStore {
       payload: parseJson(row.payload_json) ?? {},
       createdAt: row.created_at,
     }));
+  }
+
+  reconcileDocument(input) {
+    const entityType = requireText(input.entityType, "entityType");
+    const entityId = requireText(input.entityId, "entityId");
+    const revision = input.revision;
+    const contentHash = requireText(input.contentHash, "contentHash");
+    const timestamp = toTimestamp(input.now);
+    if (!["story", "epic"].includes(entityType) || !Number.isInteger(revision) || revision < 1) {
+      throw new DomainError("reconciliation_input_invalid", "Entidad o revisión no válida.", {
+        details: { entityType, entityId, revision },
+        status: 400,
+      });
+    }
+
+    return this.transaction(() => {
+      const state = this.db
+        .prepare("SELECT * FROM entity_state WHERE entity_type = ? AND entity_id = ?")
+        .get(entityType, entityId);
+      const heldClaim = entityType === "story" ? this._heldClaim(entityId) : null;
+      const safeBootstrap = !state;
+      const unchanged = state?.revision === revision && state?.content_hash === contentHash;
+      const safeAdvance = state && !state.pending_operation_id && revision === state.revision + 1;
+
+      if (unchanged) {
+        return { status: "unchanged", entityType, entityId, revision };
+      }
+
+      if ((safeBootstrap || safeAdvance) && !heldClaim) {
+        this.db
+          .prepare(
+            `INSERT INTO entity_state (
+               entity_type, entity_id, revision, content_hash, pending_operation_id, updated_at
+             ) VALUES (?, ?, ?, ?, NULL, ?)
+             ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+               revision = excluded.revision,
+               content_hash = excluded.content_hash,
+               pending_operation_id = NULL,
+               updated_at = excluded.updated_at`,
+          )
+          .run(entityType, entityId, revision, contentHash, timestamp);
+        this.db
+          .prepare("DELETE FROM entity_quarantine WHERE entity_type = ? AND entity_id = ?")
+          .run(entityType, entityId);
+        this.appendAudit(
+          {
+            eventType: safeBootstrap ? "document_indexed" : "manual_edit_imported",
+            entityType,
+            entityId,
+            actor: input.actor ?? "watcher",
+            payload: { revision, contentHash },
+            createdAt: timestamp,
+          },
+          false,
+        );
+        return {
+          status: safeBootstrap ? "indexed" : "imported",
+          entityType,
+          entityId,
+          revision,
+        };
+      }
+
+      const reason = heldClaim
+        ? "active_claim"
+        : state?.pending_operation_id
+          ? "pending_operation"
+          : "revision_divergence";
+      const details = {
+        documentRevision: revision,
+        runtimeRevision: state?.revision ?? null,
+        attemptId: heldClaim?.attempt_id ?? null,
+      };
+      this.db
+        .prepare(
+          `INSERT INTO entity_quarantine (
+             entity_type, entity_id, reason, details_json, detected_at, resolved_at, resolved_by
+           ) VALUES (?, ?, ?, ?, ?, NULL, NULL)
+           ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+             reason = excluded.reason,
+             details_json = excluded.details_json,
+             detected_at = excluded.detected_at,
+             resolved_at = NULL,
+             resolved_by = NULL`,
+        )
+        .run(entityType, entityId, reason, JSON.stringify(details), timestamp);
+      this.appendAudit(
+        {
+          eventType: "document_quarantined",
+          entityType,
+          entityId,
+          actor: input.actor ?? "watcher",
+          payload: { reason, ...details },
+          createdAt: timestamp,
+        },
+        false,
+      );
+      return { status: "quarantined", entityType, entityId, reason, details };
+    });
+  }
+
+  listQuarantines() {
+    return this.db
+      .prepare(
+        `SELECT * FROM entity_quarantine
+         WHERE resolved_at IS NULL ORDER BY detected_at, entity_type, entity_id`,
+      )
+      .all()
+      .map((row) => ({
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        reason: row.reason,
+        details: parseJson(row.details_json) ?? {},
+        detectedAt: row.detected_at,
+      }));
   }
 
   appendAudit(event, withinTransaction = true) {
