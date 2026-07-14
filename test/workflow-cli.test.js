@@ -263,3 +263,61 @@ test("CLI block exige fencing vigente y deja el intento en waiting", async () =>
     await fs.rm(rootPath, { recursive: true, force: true });
   }
 });
+
+test("CLI cubre planificación completa sin editar Markdown manualmente", async () => {
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-dogfood-cli-"));
+  const configPath = path.join(rootPath, ".config", "projects.json");
+  await git(rootPath, ["init", "-q"]);
+  try {
+    await fs.writeFile(path.join(rootPath, "README.md"), "# Consumer\n", "utf8");
+    await runCli(["init", "--id", "dogfood-project", "--name", "Dogfood", "--json"], rootPath, configPath);
+    await runCli([
+      "create-epic", "EPI-001", "--title", "Entrega real", "--objective", "Completar un flujo real", "--json",
+    ], rootPath, configPath);
+    await runCli([
+      "create-story", "STO-001",
+      "--title", "Implementar cambio",
+      "--objective", "Crear y verificar un resultado observable",
+      "--acceptance", "Resultado observable",
+      "--validation", "node -e \"process.exit(0)\"",
+      "--context", "README.md",
+      "--scope", "README.md",
+      "--subtasks", "Implementar",
+      "--epic", "EPI-001",
+      "--json",
+    ], rootPath, configPath);
+    await git(rootPath, ["add", "."]);
+    await git(rootPath, ["commit", "-qm", "plan"]);
+
+    const claimed = JSON.parse(
+      (await runCli(["claim", "STO-001", "--agent", "specialist-real", "--json"], rootPath, configPath)).stdout,
+    );
+    const attempt = claimed.execution.attemptId;
+    const fence = String(claimed.execution.fencingToken);
+    const envelope = ["--attempt-id", attempt, "--fencing-token", fence, "--actor", "specialist-real", "--json"];
+
+    const worktree = JSON.parse(
+      (await runCli(["worktree", "STO-001", ...envelope], rootPath, configPath)).stdout,
+    );
+    assert.equal(worktree.created, true);
+    await runCli(["check", "STO-001", ...envelope, "--subtask", "implementar"], rootPath, configPath);
+    await runCli(["check", "STO-001", ...envelope, "--criterion", "resultado-observable"], rootPath, configPath);
+    const blocked = JSON.parse((await runCli([
+      "block", "STO-001", ...envelope,
+      "--type", "human", "--description", "Confirmar alcance", "--owner", "Eduardo",
+      "--action", "Confirmar", "--resume-condition", "Confirmado",
+    ], rootPath, configPath)).stdout);
+    await runCli(["resolve", "STO-001", ...envelope, "--block-id", blocked.block.id], rootPath, configPath);
+    await runCli(["checkpoint", "STO-001", ...envelope, "--summary", "Implementación lista"], rootPath, configPath);
+    await runCli(["validate", "STO-001", ...envelope], rootPath, configPath);
+    const completed = JSON.parse((await runCli([
+      "complete", "STO-001", ...envelope, "--role", "orchestrator", "--actor", "orchestrator",
+    ], rootPath, configPath)).stdout);
+    assert.equal(completed.status, "done");
+    const shown = JSON.parse((await runCli(["show", "STO-001", "--json"], rootPath, configPath)).stdout);
+    assert.equal(shown.story.status, "done");
+    assert.equal(shown.execution.operationalStatus, "unclaimed");
+  } finally {
+    await fs.rm(rootPath, { recursive: true, force: true });
+  }
+});

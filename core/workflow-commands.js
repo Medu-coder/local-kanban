@@ -5,7 +5,14 @@ import { promisify } from "node:util";
 import { transitionStoryCommand, validateProjectDocuments } from "./commands.js";
 import { buildOperationalCapsule, scheduleStories } from "./coordination.js";
 import { DomainError } from "./errors.js";
-import { updateStoryCommand } from "./entity-commands.js";
+import {
+  createEpicCommand,
+  createStoryCommand,
+  toggleStoryCriterionCommand,
+  toggleStorySubtaskCommand,
+  updateStoryCommand,
+} from "./entity-commands.js";
+import { prepareWorktree } from "./git.js";
 import { resolveProjectPaths } from "./paths.js";
 import { getRegisteredProject } from "./project.js";
 import { openRuntime } from "./runtime.js";
@@ -66,6 +73,125 @@ function dependencyStatuses(story, stories) {
       .filter((dependency) => dependency.type === "hard")
       .map((dependency) => [dependency.story_id, byId.get(dependency.story_id)?.status]),
   );
+}
+
+function slug(value, fallback) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 50) || fallback;
+}
+
+function uniqueItems(values = []) {
+  return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
+}
+
+export async function createStoryWorkflow(options) {
+  const { project } = await context(options);
+  const id = requireText(options.storyId, "storyId");
+  const title = requireText(options.title, "title");
+  const objective = requireText(options.objective, "objective");
+  const acceptance = uniqueItems(options.acceptance);
+  const validationCommands = uniqueItems(options.validationCommands);
+  const contextFiles = uniqueItems(options.contextFiles);
+  if (acceptance.length === 0 || validationCommands.length === 0 || contextFiles.length === 0) {
+    throw new DomainError(
+      "definition_of_ready_incomplete",
+      "create-story exige aceptación, validación y contexto.",
+      { details: { acceptance: acceptance.length, validation: validationCommands.length, context: contextFiles.length }, status: 400 },
+    );
+  }
+  const dependencies = [
+    ...uniqueItems(options.hardDependencies).map((storyId) => ({ story_id: storyId, type: "hard" })),
+    ...uniqueItems(options.relatedDependencies).map((storyId) => ({ story_id: storyId, type: "related" })),
+  ];
+  const story = {
+    schema_version: 1,
+    revision: 1,
+    id,
+    type: "story",
+    project: project.id,
+    title,
+    objective,
+    ...(options.description ? { description: String(options.description).trim() } : {}),
+    scope: uniqueItems(options.scope),
+    non_scope: uniqueItems(options.nonScope),
+    epic: options.epic ?? null,
+    status: "backlog",
+    priority: options.priority ?? "medium",
+    risk: options.risk ?? "standard",
+    ...(Number.isSafeInteger(options.rank) ? { rank: options.rank } : {}),
+    execution_mode: options.executionMode ?? "agent",
+    acceptance_criteria: acceptance.map((label, index) => ({
+      id: slug(label, `acceptance-${index + 1}`),
+      label,
+      kind: "manual",
+      checked: false,
+    })),
+    readiness_criteria: [],
+    dependencies,
+    context_files: contextFiles,
+    validation: { commands: validationCommands },
+    subtasks: uniqueItems(options.subtasks).map((subtask, index) => ({
+      id: slug(subtask, `subtask-${index + 1}`),
+      title: subtask,
+      done: false,
+    })),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  return createStoryCommand({
+    project,
+    story,
+    body: options.body ?? "",
+    expectedRevision: 0,
+    actor: options.actor ?? "codex",
+    idempotencyKey: options.idempotencyKey ?? randomUUID(),
+  });
+}
+
+export async function createEpicWorkflow(options) {
+  const { project } = await context(options);
+  const title = requireText(options.title, "title");
+  const epic = {
+    schema_version: 1,
+    revision: 1,
+    id: requireText(options.epicId, "epicId"),
+    type: "epic",
+    project: project.id,
+    title,
+    objective: requireText(options.objective, "objective"),
+    ...(options.description ? { description: String(options.description).trim() } : {}),
+    labels: uniqueItems(options.labels),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  return createEpicCommand({
+    project,
+    epic,
+    body: options.body ?? "",
+    expectedRevision: 0,
+    actor: options.actor ?? "codex",
+    idempotencyKey: options.idempotencyKey ?? randomUUID(),
+  });
+}
+
+export async function showStoryWorkflow(options) {
+  const { paths, story } = await storyContext(options);
+  const runtime = openRuntime(paths.rootPath);
+  try {
+    return buildOperationalCapsule({
+      story,
+      coordination: runtime.getCoordinationState(story.id),
+      gates: evaluateStoryGates(story),
+      nextAction: "inspect_gate",
+    });
+  } finally {
+    runtime.close();
+  }
 }
 
 async function currentGates(project, story) {
@@ -217,6 +343,80 @@ export async function blockStoryWorkflow(options) {
   } finally {
     runtime.close();
   }
+}
+
+export async function resolveBlockWorkflow(options) {
+  const { paths } = await storyContext(options);
+  const runtime = openRuntime(paths.rootPath);
+  try {
+    return runtime.resolveBlock({
+      ...claimEnvelope(options),
+      blockId: requireText(options.blockId, "blockId"),
+    });
+  } finally {
+    runtime.close();
+  }
+}
+
+export async function releaseStoryWorkflow(options) {
+  const { paths } = await storyContext(options);
+  const runtime = openRuntime(paths.rootPath);
+  try {
+    return runtime.releaseClaim({
+      ...claimEnvelope(options),
+      outcome: options.outcome ?? "released",
+    });
+  } finally {
+    runtime.close();
+  }
+}
+
+export async function checkStoryWorkflow(options) {
+  const envelope = claimEnvelope(options);
+  const { project, paths, story } = await storyContext(options);
+  const runtime = openRuntime(paths.rootPath);
+  try {
+    runtime.verifyClaim(envelope);
+  } finally {
+    runtime.close();
+  }
+  if (Boolean(options.criterionId) === Boolean(options.subtaskId)) {
+    throw new DomainError("command_invalid", "check exige exactamente --criterion o --subtask.", {
+      status: 400,
+    });
+  }
+  const common = {
+    project,
+    storyId: story.id,
+    expectedRevision: story.revision,
+    actor: envelope.actor,
+    idempotencyKey: options.idempotencyKey ?? randomUUID(),
+  };
+  if (options.criterionId) {
+    return toggleStoryCriterionCommand({
+      ...common,
+      criteriaType: "acceptance",
+      criterionId: options.criterionId,
+    });
+  }
+  return toggleStorySubtaskCommand({ ...common, subtaskId: options.subtaskId });
+}
+
+export async function prepareStoryWorktreeWorkflow(options) {
+  const envelope = claimEnvelope(options);
+  const { paths } = await storyContext(options);
+  const runtime = openRuntime(paths.rootPath);
+  try {
+    runtime.verifyClaim(envelope);
+  } finally {
+    runtime.close();
+  }
+  return prepareWorktree({
+    rootPath: paths.rootPath,
+    storyId: envelope.storyId,
+    attemptId: envelope.attemptId,
+    baseCommit: options.baseCommit ?? "HEAD",
+  });
 }
 
 async function gitCommit(rootPath, requestedCommit) {

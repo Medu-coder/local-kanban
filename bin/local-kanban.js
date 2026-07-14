@@ -9,9 +9,16 @@ import { getRegisteredProject, initializeProject } from "../core/project.js";
 import {
   blockStoryWorkflow,
   checkpointStoryWorkflow,
+  checkStoryWorkflow,
   claimStoryWorkflow,
   completeStoryWorkflow,
+  createEpicWorkflow,
+  createStoryWorkflow,
   nextStoriesCommand,
+  prepareStoryWorktreeWorkflow,
+  releaseStoryWorkflow,
+  resolveBlockWorkflow,
+  showStoryWorkflow,
   validateStoryWorkflow,
 } from "../core/workflow-commands.js";
 
@@ -19,13 +26,25 @@ const help = `Local Kanban
 
 Uso:
   local-kanban init [--id ID] [--name NAME] [--docs-path PATH] [--json]
+  local-kanban create-epic EPI-ID --title TEXT --objective TEXT [--labels a,b] [--json]
+  local-kanban create-story STO-ID --title TEXT --objective TEXT --acceptance a,b
+    --validation COMMAND[,COMMAND] --context FILE[,FILE] [--scope a,b] [--subtasks a,b]
+    [--epic EPI-ID] [--hard STO-ID,...] [--related STO-ID,...]
+    [--priority low|medium|high] [--risk standard|high] [--rank N] [--json]
   local-kanban next [--limit N] [--json]
+  local-kanban show STORY_ID [--json]
   local-kanban claim STORY_ID [--agent AGENT] [--session-id ID] [--json]
   local-kanban checkpoint STORY_ID --attempt-id ID --fencing-token N --summary TEXT
     [--next-action TEXT] [--files a,b] [--tests a,b] [--actor ACTOR] [--json]
   local-kanban block STORY_ID --attempt-id ID --fencing-token N --type TYPE
     --description TEXT --owner OWNER --action TEXT --resume-condition TEXT
     [--evidence TEXT] [--actor ACTOR] [--json]
+  local-kanban resolve STORY_ID --attempt-id ID --fencing-token N --block-id ID [--json]
+  local-kanban check STORY_ID --attempt-id ID --fencing-token N
+    (--criterion ID | --subtask ID) [--json]
+  local-kanban worktree STORY_ID --attempt-id ID --fencing-token N [--base-commit REF] [--json]
+  local-kanban release STORY_ID --attempt-id ID --fencing-token N
+    [--outcome released|failed|abandoned|stale] [--json]
   local-kanban validate [STORY_ID --attempt-id ID --fencing-token N]
     [--commit REF] [--evidence-type TYPE] [--summary TEXT] [--actor ACTOR] [--json]
   local-kanban complete STORY_ID --attempt-id ID --fencing-token N
@@ -130,11 +149,64 @@ async function run() {
     return;
   }
 
+  if (command === "create-epic") {
+    const result = await createEpicWorkflow({
+      ...workflowOptions(options),
+      epicId: options._[0],
+      title: options.title,
+      objective: options.objective,
+      description: options.description,
+      labels: commaList(options.labels),
+      body: options.body,
+      idempotencyKey: options.idempotencyKey,
+    });
+    output(result, options.json);
+    return;
+  }
+
+  if (command === "create-story") {
+    const rankValue = String(options.rank ?? "");
+    const rank = /^\d+$/u.test(rankValue) ? Number(rankValue) : undefined;
+    const result = await createStoryWorkflow({
+      ...workflowOptions(options),
+      storyId: options._[0],
+      title: options.title,
+      objective: options.objective,
+      description: options.description,
+      acceptance: commaList(options.acceptance),
+      validationCommands: commaList(options.validation),
+      contextFiles: commaList(options.context),
+      scope: commaList(options.scope),
+      nonScope: commaList(options.nonScope),
+      subtasks: commaList(options.subtasks),
+      hardDependencies: commaList(options.hard),
+      relatedDependencies: commaList(options.related),
+      epic: options.epic,
+      priority: options.priority,
+      risk: options.risk,
+      executionMode: options.executionMode,
+      rank,
+      body: options.body,
+      idempotencyKey: options.idempotencyKey,
+    });
+    output(result, options.json);
+    return;
+  }
+
   if (command === "next") {
     const result = await nextStoriesCommand({
       cwd: process.cwd(),
       configPath: process.env.KANBAN_CONFIG_PATH,
       limit: options.limit,
+    });
+    output(result, options.json);
+    return;
+  }
+
+  if (command === "show") {
+    const result = await showStoryWorkflow({
+      ...workflowOptions(options),
+      storyId: options._[0],
     });
     output(result, options.json);
     return;
@@ -185,6 +257,48 @@ async function run() {
       action: options.action,
       resumeCondition: options.resumeCondition,
       evidence: options.evidence,
+    });
+    output(result, options.json);
+    return;
+  }
+
+  if (command === "resolve") {
+    const result = await resolveBlockWorkflow({
+      ...workflowOptions(options),
+      storyId: options._[0],
+      blockId: options.blockId,
+    });
+    output(result, options.json);
+    return;
+  }
+
+  if (command === "check") {
+    const result = await checkStoryWorkflow({
+      ...workflowOptions(options),
+      storyId: options._[0],
+      criterionId: options.criterion,
+      subtaskId: options.subtask,
+      idempotencyKey: options.idempotencyKey,
+    });
+    output(result, options.json);
+    return;
+  }
+
+  if (command === "worktree") {
+    const result = await prepareStoryWorktreeWorkflow({
+      ...workflowOptions(options),
+      storyId: options._[0],
+      baseCommit: options.baseCommit,
+    });
+    output(result, options.json);
+    return;
+  }
+
+  if (command === "release") {
+    const result = await releaseStoryWorkflow({
+      ...workflowOptions(options),
+      storyId: options._[0],
+      outcome: options.outcome,
     });
     output(result, options.json);
     return;
@@ -243,7 +357,7 @@ async function run() {
 
   throw new DomainError("command_unknown", `Comando desconocido: ${command}`, {
     details: {
-      available: ["init", "next", "claim", "checkpoint", "block", "validate", "complete", "doctor", "transition"],
+      available: ["init", "create-epic", "create-story", "next", "show", "claim", "checkpoint", "block", "resolve", "check", "worktree", "release", "validate", "complete", "doctor", "transition"],
     },
   });
 }

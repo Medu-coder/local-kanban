@@ -43,16 +43,25 @@ Regenerar la cápsula completa tras resume, compactación o handoff. Tras una op
 Usar este flujo mínimo; la CLI genera internamente IDs, timestamps y claves de idempotencia:
 
 ```text
+local-kanban create-epic EPI-... --title "..." --objective "..." --json
+local-kanban create-story STO-... --title "..." --objective "..." \
+  --acceptance "..." --validation "..." --context "..." --json
 local-kanban next --json
+local-kanban show STO-... --json
 local-kanban claim STO-... --agent AGENT_ID --json
+local-kanban worktree STO-... --attempt-id ID --fencing-token N --json
 local-kanban checkpoint STO-... --attempt-id ID --fencing-token N --summary "..." --json
 local-kanban block STO-... --attempt-id ID --fencing-token N --type TYPE \
   --description "..." --owner "..." --action "..." --resume-condition "..." --json
+local-kanban resolve STO-... --attempt-id ID --fencing-token N --block-id ID --json
+local-kanban check STO-... --attempt-id ID --fencing-token N --subtask ID --json
+local-kanban check STO-... --attempt-id ID --fencing-token N --criterion ID --json
 local-kanban validate STO-... --attempt-id ID --fencing-token N --json
 local-kanban complete STO-... --attempt-id ID --fencing-token N --role orchestrator --json
+local-kanban release STO-... --attempt-id ID --fencing-token N --outcome released --json
 ```
 
-Conservar el `attemptId` y `fencingToken` devueltos por `claim`; toda mutación posterior de ejecución los exige y renueva el lease. No inventarlos ni reutilizarlos en otra historia. `validate` sin `STORY_ID` valida globalmente los documentos del proyecto; con `STORY_ID` ejecuta los comandos declarados por la historia, registra evidencia durable vinculada al commit y al intento, y entrega en `testing/verifying`. Solo el orquestador usa `complete`, después de revisar el resultado y los gates.
+Crear trabajo nuevo mediante `create-epic` y `create-story`; no generar sus Markdown manualmente. Conservar el `attemptId` y `fencingToken` devueltos por `claim`; toda mutación posterior de ejecución los exige y renueva el lease. No inventarlos ni reutilizarlos en otra historia. Usar `show` para regenerar la cápsula tras resume. Marcar únicamente trabajo realmente terminado con `check`. Resolver un bloqueo con `resolve` antes de continuar y usar `release` para handoff, abandono o recuperación explícita. `validate` sin `STORY_ID` valida globalmente los documentos del proyecto; con `STORY_ID` ejecuta los comandos declarados por la historia, registra evidencia durable vinculada al commit y al intento, y entrega en `testing/verifying`. Solo el orquestador usa `complete`, después de revisar el resultado y los gates.
 
 ## Flujo del orquestador
 
@@ -78,8 +87,8 @@ No absorber trabajo delegable por conveniencia. Registrar la causa de overrides,
 3. Ejecutar la historia end to end dentro del scope concedido.
 4. Registrar `checkpoint` solo en hitos significativos, pausas largas, handoffs o bloqueos. Incluir progreso, cambios relevantes, validación realizada, trabajo restante y siguiente acción.
 5. Renovar el lease implícitamente mediante actividad normal de la interfaz. No generar heartbeats conversacionales.
-6. Ante un bloqueo real, usar `block` con tipo, evidencia, responsable, acción solicitada y condición de reanudación.
-7. Usar `validate STORY_ID`; no registrar manualmente evidencia ni omitir los comandos definidos.
+6. Ante un bloqueo real, usar `block` con tipo, evidencia, responsable, acción solicitada y condición de reanudación; tras atenderlo usar `resolve`.
+7. Marcar subtareas y criterios satisfechos con `check`, y después usar `validate STORY_ID`; no registrar manualmente evidencia ni omitir los comandos definidos.
 8. Para riesgo `standard`, entregar en `verifying` al superar los gates. Para riesgo `high`, solicitar verificación independiente antes de la entrega.
 9. Entregar un handoff compacto que permita al orquestador localizar cambios, pruebas, decisiones y trabajo residual. No marcar `done`.
 
