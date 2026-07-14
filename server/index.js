@@ -4,6 +4,9 @@ import { watch as fsWatch } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import { fileURLToPath } from "node:url";
+import { transitionStoryCommand } from "../core/commands.js";
+import { DomainError } from "../core/errors.js";
+import { FilesystemSafetyError } from "../core/paths.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -202,7 +205,7 @@ function evaluateDerivedCriterion(rule, story, storyLookup) {
     case "has_context_files":
       return story.contextFiles.length > 0;
     case "story_in_testing":
-      return story.status === "testing";
+      return story.status === "testing" || story.status === "done";
     default:
       return false;
   }
@@ -255,11 +258,30 @@ function enrichStories(project, stories) {
       const linked = storyLookup.get(normalizeId(storyId));
       return linked ? normalizeStoryReference(linked) : createMissingStoryReference(storyId);
     });
-    const isBlocked = blockedByStories.some((linkedStory) => !linkedStory.exists || linkedStory.status !== "done");
+    const isBlocked =
+      blockedByStories.some((linkedStory) => !linkedStory.exists || linkedStory.status !== "done") ||
+      (story.blockers?.length ?? 0) > 0;
     const readyCriteria = hydrateCriteria(story.readyCriteria, story, storyLookup);
     const doneCriteria = hydrateCriteria(story.doneCriteria, story, storyLookup);
     const readyCriteriaProgress = createCriteriaProgress(readyCriteria);
     const doneCriteriaProgress = createCriteriaProgress(doneCriteria, true);
+
+    const implementationEvidence = (story.evidence ?? []).filter((item) => item.type !== "review");
+    const hasIndependentReview = (story.evidence ?? [])
+      .filter((item) => item.type === "review")
+      .some(
+        (review) =>
+          implementationEvidence.length > 0 &&
+          implementationEvidence.every(
+            (evidence) =>
+              review.actor !== evidence.actor && review.attempt_id !== evidence.attempt_id,
+          ),
+      );
+    const canonicalDoneValidated =
+      story.schemaVersion !== 1 ||
+      ((story.subtasks ?? []).every((subtask) => subtask.done) &&
+        (story.evidence?.length ?? 0) > 0 &&
+        (story.risk !== "high" || hasIndependentReview));
 
     return {
       ...story,
@@ -275,7 +297,7 @@ function enrichStories(project, stories) {
       doneCriteriaProgress,
       isBlocked,
       isReadyForDeveloping: !isBlocked && readyCriteriaProgress.isComplete,
-      isDoneValidated: doneCriteriaProgress.isComplete,
+      isDoneValidated: !isBlocked && doneCriteriaProgress.isComplete && canonicalDoneValidated,
     };
   });
 }
@@ -383,28 +405,43 @@ async function readMarkdownCollection(baseDir, kind, project) {
 
         return {
           id: String(id),
+          schemaVersion: data.schema_version ?? null,
+          revision: Number.isInteger(data.revision) ? data.revision : null,
           type: kind,
           title: data.title ?? id,
+          objective: data.objective ?? "",
           description: data.description ?? "",
           projectId: project.id,
           projectName: project.name,
           status: statuses.includes(data.status) ? data.status : "backlog",
           epicId: data.epic ? String(data.epic) : null,
           priority: data.priority ?? "medium",
+          risk: data.risk ?? "standard",
           assignee: data.assignee ?? null,
           agentOwner: data.agent_owner ?? null,
           executionMode: executionModes.includes(data.execution_mode) ? data.execution_mode : "human",
           storyType: storyTypes.includes(data.story_type) ? data.story_type : "feature",
-          blockedBy: coerceStringList(data.blocked_by),
+          blockedBy: Array.isArray(data.dependencies)
+            ? data.dependencies
+                .filter((dependency) => dependency?.type === "hard")
+                .map((dependency) => String(dependency.story_id))
+            : coerceStringList(data.blocked_by),
           blocks: coerceStringList(data.blocks),
-          relatedTo: coerceStringList(data.related_to),
+          relatedTo: Array.isArray(data.dependencies)
+            ? data.dependencies
+                .filter((dependency) => dependency?.type === "related")
+                .map((dependency) => String(dependency.story_id))
+            : coerceStringList(data.related_to),
           contextFiles: coerceStringList(data.context_files),
           agentStatusNote: String(data.agent_status_note ?? "").trim(),
           lastAgentUpdate: coerceIsoTimestamp(data.last_agent_update),
           labels: Array.isArray(data.labels) ? data.labels : [],
           subtasks: coerceSubtasks(data.subtasks),
-          readyCriteria: coerceCriteria(data.ready_criteria),
-          doneCriteria: coerceCriteria(data.done_criteria),
+          readyCriteria: coerceCriteria(data.readiness_criteria ?? data.ready_criteria),
+          doneCriteria: coerceCriteria(data.acceptance_criteria ?? data.done_criteria),
+          blockers: Array.isArray(data.blockers) ? data.blockers : [],
+          evidence: Array.isArray(data.evidence) ? data.evidence : [],
+          validation: data.validation ?? { commands: [] },
           body: parsed.content.trim(),
           filePath,
           docsPath: project.docsPath,
@@ -728,6 +765,85 @@ app.get("/api/projects", async (_req, res) => {
   }
 });
 
+function sendDomainError(res, error, fallback) {
+  if (error instanceof DomainError) {
+    return res.status(error.status).json({
+      error: fallback,
+      code: error.code,
+      detail: error.message,
+      details: error.details ?? null,
+    });
+  }
+  if (error instanceof FilesystemSafetyError) {
+    return res.status(400).json({
+      error: fallback,
+      code: error.code,
+      detail: error.message,
+      details: null,
+    });
+  }
+  console.error(error);
+  return res.status(500).json({
+    error: fallback,
+    code: "unexpected_error",
+    detail: fallback,
+    details: null,
+  });
+}
+
+async function tryCanonicalTransition(req, res, nextEpicProvided) {
+  const { projectId, storyId } = req.params;
+  const project = await getProjectConfig(projectId);
+  if (!project) {
+    res.status(404).json({ error: "Proyecto no encontrado." });
+    return true;
+  }
+
+  const found = await findStory(projectId, storyId);
+  if (!found) {
+    res.status(404).json({ error: "Historia no encontrada." });
+    return true;
+  }
+  if (found.story.schemaVersion !== 1) {
+    return false;
+  }
+
+  const { status, expectedRevision, idempotencyKey, epicId } = req.body ?? {};
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+    res.status(400).json({
+      error: "expectedRevision es obligatorio para documentos v1.",
+      code: "command_invalid",
+    });
+    return true;
+  }
+  if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) {
+    res.status(400).json({
+      error: "idempotencyKey es obligatorio para documentos v1.",
+      code: "command_invalid",
+    });
+    return true;
+  }
+
+  try {
+    const commandResult = await transitionStoryCommand({
+      project,
+      storyId,
+      expectedRevision,
+      nextStatus: status,
+      ...(nextEpicProvided ? { nextEpic: epicId ?? null } : {}),
+      actor: "human-ui",
+      actorRole: "orchestrator",
+      idempotencyKey: idempotencyKey.trim(),
+    });
+    scheduleBroadcast();
+    res.json({ ok: true, ...commandResult, epicId: commandResult.epic });
+    return true;
+  } catch (error) {
+    sendDomainError(res, error, "No se pudo transicionar la historia.");
+    return true;
+  }
+}
+
 app.post("/api/projects/:projectId/stories/:storyId/status", async (req, res) => {
   const { projectId, storyId } = req.params;
   const { status } = req.body ?? {};
@@ -737,6 +853,9 @@ app.post("/api/projects/:projectId/stories/:storyId/status", async (req, res) =>
   }
 
   try {
+    if (await tryCanonicalTransition(req, res, false)) {
+      return;
+    }
     const result = await findStory(projectId, storyId);
     if (!result) {
       return res.status(404).json({ error: "Historia no encontrada." });
@@ -771,6 +890,9 @@ app.post("/api/projects/:projectId/stories/:storyId/move", async (req, res) => {
   }
 
   try {
+    if (await tryCanonicalTransition(req, res, true)) {
+      return;
+    }
     const result = await findStory(projectId, storyId);
     if (!result) {
       return res.status(404).json({ error: "Historia no encontrada." });
@@ -825,6 +947,12 @@ app.post(
       if (!result) {
         return res.status(404).json({ error: "Historia no encontrada." });
       }
+      if (result.story.schemaVersion === 1) {
+        return res.status(409).json({
+          error: "El checklist v1 requiere un comando canónico.",
+          code: "canonical_update_required",
+        });
+      }
 
       const raw = await fs.readFile(result.story.filePath, "utf8");
       const parsed = matter(raw);
@@ -878,6 +1006,12 @@ app.post("/api/projects/:projectId/stories/:storyId/subtasks/:subtaskIndex/toggl
     const result = await findStory(projectId, storyId);
     if (!result) {
       return res.status(404).json({ error: "Historia no encontrada." });
+    }
+    if (result.story.schemaVersion === 1) {
+      return res.status(409).json({
+        error: "Las subtareas v1 requieren un comando canónico.",
+        code: "canonical_update_required",
+      });
     }
 
     const raw = await fs.readFile(result.story.filePath, "utf8");
@@ -969,6 +1103,13 @@ app.put("/api/projects/:projectId/epics/:epicId", async (req, res) => {
 
     if (!projectConfig || !existing) {
       return res.status(404).json({ error: "Epica no encontrada." });
+    }
+
+    if (existing.schemaVersion === 1) {
+      return res.status(409).json({
+        error: "La edición de épicas v1 requiere un comando canónico.",
+        code: "canonical_update_required",
+      });
     }
 
     const payload = sanitizeEpicPayload({ ...req.body, id: epicId }, projectId);
@@ -1083,6 +1224,14 @@ app.put("/api/projects/:projectId/stories/:storyId", async (req, res) => {
 
     if (!projectConfig || !existing) {
       return res.status(404).json({ error: "Historia no encontrada." });
+    }
+
+    if (existing.story.schemaVersion === 1) {
+      return res.status(409).json({
+        error: "La edición completa de historias v1 requiere un comando canónico.",
+        code: "canonical_update_required",
+        detail: "Usa local-kanban; PUT legacy no puede mutar documentos v1.",
+      });
     }
 
     const payload = sanitizeStoryPayload({ ...req.body, id: storyId }, projectId);

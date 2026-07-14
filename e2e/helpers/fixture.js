@@ -22,6 +22,7 @@ export async function resetFixtureWorkspace() {
 
   const config = [
     {
+      schema_version: 1,
       id: "sample-project",
       name: "Proyecto de ejemplo",
       rootPath: projectRoot,

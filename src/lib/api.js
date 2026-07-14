@@ -8,13 +8,24 @@ export async function fetchProjects() {
   return response.json();
 }
 
-export async function updateStoryStatus(projectId, storyId, status) {
+export class ApiError extends Error {
+  constructor(message, { status, code, details, payload } = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status ?? null;
+    this.code = code ?? null;
+    this.details = details ?? null;
+    this.payload = payload ?? null;
+  }
+}
+
+export async function updateStoryStatus(projectId, storyId, status, metadata = {}) {
   const response = await fetch(`/api/projects/${projectId}/stories/${storyId}/status`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, ...metadata }),
   });
 
   if (!response.ok) {
@@ -40,7 +51,12 @@ export async function moveStory(projectId, storyId, payload) {
 async function handleJson(response, fallback) {
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail ?? payload.error ?? fallback);
+    throw new ApiError(payload.message ?? payload.detail ?? payload.error ?? fallback, {
+      status: response.status,
+      code: payload.code ?? (response.status === 409 ? "conflict" : "request_failed"),
+      details: payload.details,
+      payload,
+    });
   }
 
   return response.json();

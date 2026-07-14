@@ -484,6 +484,12 @@ export default function App() {
       await moveStory(draggedStory.projectId, draggedStory.id, {
         status: nextStatus,
         epicId: normalizedEpicId,
+        ...(Number.isSafeInteger(draggedStory.revision)
+          ? {
+              expectedRevision: draggedStory.revision,
+              idempotencyKey: crypto.randomUUID(),
+            }
+          : {}),
       });
       await refreshProjects();
       setSelectedStory((current) =>
