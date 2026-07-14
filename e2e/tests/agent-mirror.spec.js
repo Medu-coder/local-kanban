@@ -42,7 +42,7 @@ test("si el agente crea una historia sin épica en markdown, aparece en la lane 
 test("si el agente introduce una dependencia huérfana, el detalle la muestra como referencia huérfana", async ({ page }) => {
   await updateMarkdownFrontmatter(getStoryPath("STO-001"), (data) => ({
     ...data,
-    blocked_by: ["STO-404"],
+    dependencies: [{ story_id: "STO-404", type: "hard" }],
   }));
 
   await page.reload();
@@ -50,45 +50,6 @@ test("si el agente introduce una dependencia huérfana, el detalle la muestra co
 
   await expect(page.getByTestId("story-detail-panel")).toContainText("Referencia huérfana");
   await expect(page.getByTestId("story-detail-panel")).toContainText("STO-404");
-});
-
-test("si los criterios vienen como strings legacy, la UI los migra visualmente a checklist manual", async ({ page }) => {
-  await updateMarkdownFrontmatter(getStoryPath("STO-001"), (data) => ({
-    ...data,
-    ready_criteria: ["Checklist legacy ready"],
-    done_criteria: ["Checklist legacy done"],
-  }));
-
-  await page.reload();
-  await page.getByTestId("story-card-STO-001").click();
-
-  await expect(page.getByTestId("story-detail-panel")).toContainText("Checklist legacy ready");
-  await expect(page.getByTestId("story-detail-panel")).toContainText("Checklist legacy done");
-  await expect(page.getByTestId("story-detail-panel")).toContainText("manual");
-});
-
-test("una edición legacy actualiza el checklist visual sin certificar una historia en cuarentena", async ({ page }) => {
-  await updateMarkdownFrontmatter(getStoryPath("STO-001"), (data) => ({
-    ...data,
-    subtasks: [
-      { title: "Definir frontmatter", done: true },
-      { title: "Pintar indicadores", done: true },
-    ],
-    ready_criteria: [
-      { id: "owner", label: "Agente asignado", kind: "derived", rule: "has_agent_owner" },
-    ],
-    done_criteria: [
-      { id: "subtasks-done", label: "Todas las subtareas completadas", kind: "derived", rule: "all_subtasks_done" },
-    ],
-  }));
-
-  await page.reload();
-  await page.getByTestId("story-card-STO-001").click();
-
-  await expect(page.getByTestId("story-detail-panel")).toContainText("Done checklist");
-  await expect(page.getByTestId("story-detail-panel")).toContainText("1/1");
-  await expect(page.getByTestId("story-card-STO-001")).toContainText("Cuarentena");
-  await expect(page.getByTestId("story-card-STO-001")).not.toContainText("Done validado");
 });
 
 test("una historia en cuarentena nunca se presenta como ready", async ({ page }) => {
@@ -103,4 +64,20 @@ test("una historia en cuarentena nunca se presenta como ready", async ({ page })
   await expect(card).not.toContainText("Ready");
   await card.click();
   await expect(page.getByTestId("story-quarantine")).toBeVisible();
+});
+
+test("un documento no-v1 permanece visible pero rechaza mutaciones", async ({ request }) => {
+  await updateMarkdownFrontmatter(getStoryPath("STO-001"), (data) => {
+    const { schema_version: _schemaVersion, revision: _revision, ...legacy } = data;
+    return legacy;
+  });
+  const before = await fs.readFile(getStoryPath("STO-001"), "utf8");
+  const response = await request.post(
+    "/api/projects/sample-project/stories/STO-001/subtasks/0/toggle",
+    { data: {} },
+  );
+
+  expect(response.status()).toBe(409);
+  expect(await response.json()).toMatchObject({ code: "legacy_document_read_only" });
+  expect(await fs.readFile(getStoryPath("STO-001"), "utf8")).toBe(before);
 });

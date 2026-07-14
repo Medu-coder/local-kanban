@@ -57,50 +57,6 @@ test("rechaza la creación rápida fuera de backlog para exigir transición can�
   await expect(page.getByTestId("story-card-STO-historia-rapida")).toHaveCount(0);
 });
 
-test("edita una historia y persiste campos agénticos", async ({ page }) => {
-  await page.getByTestId("story-card-STO-001").click();
-  await page.getByTestId("edit-story-button").click();
-  await page.getByTestId("story-agent-owner-input").fill("codex-editor");
-  await page.getByTestId("story-agent-status-note-input").fill("Nota editada desde E2E");
-  await page.getByTestId("story-blocked-by-input").fill("STO-002");
-  await page.getByTestId("save-story-button").click();
-
-  await page.getByTestId("story-card-STO-001").click();
-  await expect(page.getByTestId("story-detail-panel").getByText("codex-editor")).toBeVisible();
-  await expect(page.getByTestId("story-detail-panel").getByText("Nota editada desde E2E")).toBeVisible();
-});
-
-test("impide mover a developing una historia bloqueada", async ({ page }) => {
-  await page.getByTestId("story-card-STO-003").click();
-  await page.getByTestId("edit-story-button").click();
-  await page.getByTestId("story-status-select").selectOption("developing");
-  await page.getByTestId("save-story-button").click();
-  await expect(page.getByTestId("dropzone-EPI-002-backlog")).toContainText("Historia bloqueada por otra");
-  await expect(page.getByTestId("dropzone-EPI-002-developing")).not.toContainText("Historia bloqueada por otra");
-});
-
-test("una historia legacy en cuarentena no pasa a developing aunque complete ready", async ({ page }) => {
-  await page.getByTestId("story-card-STO-001").click();
-  await page.getByText("Variables de entorno disponibles").click();
-  await expect(page.getByTestId("story-detail-panel")).toContainText("Cuarentena");
-  await expect(page.getByTestId("story-detail-panel").getByText(/^Ready$/)).toHaveCount(0);
-  await page.getByTestId("close-story-detail-button").click();
-
-  await dragStory(page, "STO-001", "EPI-001", "developing");
-
-  await expect(page.getByTestId("dropzone-EPI-001-backlog")).toContainText("Preparar contrato agentico");
-  await expect(page.getByTestId("dropzone-EPI-001-developing")).not.toContainText("Preparar contrato agentico");
-});
-
-test("recalcula done checklist legacy sin certificar cierre en cuarentena", async ({ page }) => {
-  await page.getByTestId("story-card-STO-001").click();
-  await page.getByText("Pintar indicadores").click();
-  await page.getByText("Validacion funcional completada").click();
-  await expect(page.getByTestId("story-detail-panel")).toContainText("Cuarentena");
-  await expect(page.getByTestId("story-detail-panel").getByText("2/2")).toBeVisible();
-  await expect(page.getByText("Done validado")).toHaveCount(0);
-});
-
 test("filtra por épica y busca historias por texto", async ({ page }) => {
   await page.getByTestId("epic-filter").selectOption("EPI-002");
   await expect(page.getByTestId("story-card-STO-003")).toBeVisible();
@@ -149,22 +105,6 @@ test("rechaza crear directamente en done", async ({ page }) => {
 
   await expect(page.getByText("Una historia nueva debe crearse en backlog y avanzar mediante transiciones.")).toBeVisible();
   await expect(page.getByTestId("story-card-STO-historia-sin-validacion-final")).toHaveCount(0);
-});
-
-test("marca subtareas desde el detalle y persiste el cambio", async ({ page }) => {
-  await page.getByTestId("story-card-STO-001").click();
-  await page.getByText("Pintar indicadores").click();
-  await expect(page.getByTestId("story-detail-panel").getByText("Done validado")).toHaveCount(0);
-
-  const storyFile = await fs.readFile(getStoryPath("STO-001"), "utf8");
-  await expect(storyFile).toContain("title: Pintar indicadores");
-  await expect(storyFile).toContain("done: true");
-});
-
-test("mueve una historia entre épicas y estados mediante drag and drop", async ({ page }) => {
-  await dragStory(page, "STO-002", "EPI-002", "testing");
-  await expect(page.getByTestId("dropzone-EPI-002-testing")).toContainText("Infraestructura base completada");
-  await expect(page.getByTestId("dropzone-EPI-001-done")).not.toContainText("Infraestructura base completada");
 });
 
 test("crea una historia sin épica y luego la mueve a una épica", async ({ page }) => {

@@ -51,17 +51,6 @@ export async function fetchProjects() {
   return handleJson(response, "No se pudieron cargar los proyectos.");
 }
 
-export async function updateStoryStatus(projectId, storyId, status, metadata = {}) {
-  const body = withMutationMetadata({ status }, metadata);
-  const response = await fetch(`/api/projects/${projectId}/stories/${storyId}/status`, {
-    method: "POST",
-    headers: mutationHeaders(body),
-    body: JSON.stringify(body),
-  });
-
-  return handleJson(response, "No se pudo actualizar la historia.");
-}
-
 export async function moveStory(projectId, storyId, payload) {
   const body = withMutationMetadata(payload);
   const response = await fetch(`/api/projects/${projectId}/stories/${storyId}/move`, {
