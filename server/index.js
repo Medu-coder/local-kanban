@@ -5,6 +5,15 @@ import path from "node:path";
 import matter from "gray-matter";
 import { fileURLToPath } from "node:url";
 import { transitionStoryCommand } from "../core/commands.js";
+import {
+  createEpicCommand,
+  createStoryCommand,
+  toggleStoryCriterionCommand,
+  toggleStorySubtaskCommand,
+  updateEpicCommand,
+  updateStoryCommand,
+} from "../core/entity-commands.js";
+import { readCanonicalEpic, readCanonicalStory } from "../core/entity-repository.js";
 import { DomainError } from "../core/errors.js";
 import { FilesystemSafetyError } from "../core/paths.js";
 
@@ -389,6 +398,135 @@ function sanitizeEpicPayload(payload, projectId) {
       : [],
     body: String(payload.body ?? "").trim(),
   };
+}
+
+function canonicalProject(projectConfig) {
+  return {
+    schema_version: 1,
+    id: projectConfig.id,
+    name: projectConfig.name,
+    rootPath: projectConfig.rootPath,
+    docsPath: projectConfig.docsPath ?? "docs/kanban",
+  };
+}
+
+function mutationIdempotencyKey(req) {
+  const bodyKey = req.body?.idempotencyKey;
+  const headerKey = req.get("Idempotency-Key");
+  return typeof bodyKey === "string" && bodyKey.trim() ? bodyKey.trim() : headerKey?.trim();
+}
+
+function canonicalSubtaskId(subtask, index) {
+  const supplied = String(subtask?.id ?? "").trim();
+  if (/^[a-z0-9][a-z0-9-]{0,63}$/u.test(supplied)) {
+    return supplied;
+  }
+  const slug = toSlug(subtask?.title);
+  return (slug ? `subtask-${slug}` : `subtask-${index + 1}`).slice(0, 64);
+}
+
+function canonicalSubtasks(subtasks, currentSubtasks = []) {
+  const used = new Set();
+  return coerceSubtasks(subtasks).map((subtask, index) => {
+    const matchingCurrent = currentSubtasks[index]?.title === subtask.title
+      ? currentSubtasks[index]
+      : currentSubtasks.find((item) => item.title === subtask.title && !used.has(item.id));
+    const baseId = matchingCurrent?.id ?? canonicalSubtaskId(subtask, index);
+    let id = baseId;
+    let suffix = 2;
+    while (used.has(id)) {
+      id = `${baseId.slice(0, Math.max(1, 64 - String(suffix).length - 1))}-${suffix}`;
+      suffix += 1;
+    }
+    used.add(id);
+    return { id, title: subtask.title, done: subtask.done };
+  });
+}
+
+function canonicalCriteria(criteria, fallback = []) {
+  const coerced = coerceCriteria(criteria);
+  return coerced.length ? coerced : fallback;
+}
+
+function canonicalDependencies(payload, currentDependencies = []) {
+  const references = [
+    ...coerceStringList(payload.blockedBy).map((storyId) => ({ story_id: storyId, type: "hard" })),
+    ...coerceStringList(payload.relatedTo).map((storyId) => ({ story_id: storyId, type: "related" })),
+  ];
+  const unique = new Map();
+  for (const dependency of references) {
+    const key = `${dependency.type}:${dependency.story_id}`;
+    const current = currentDependencies.find(
+      (item) => item.type === dependency.type && item.story_id === dependency.story_id,
+    );
+    unique.set(key, current ?? dependency);
+  }
+  return [...unique.values()];
+}
+
+function canonicalStoryEntity(payload, rawPayload, projectId, storyId, current = null) {
+  const acceptanceFallback = current?.acceptance_criteria ?? [
+    {
+      id: "acceptance-complete",
+      label: "Objetivo y validación completados",
+      kind: "manual",
+      checked: false,
+    },
+  ];
+  const validation = rawPayload.validation && typeof rawPayload.validation === "object"
+    ? rawPayload.validation
+    : current?.validation ?? { commands: ["npm test"] };
+
+  return {
+    ...(current ?? {}),
+    schema_version: 1,
+    revision: current ? current.revision + 1 : 1,
+    id: storyId,
+    type: "story",
+    project: projectId,
+    title: payload.title,
+    objective: String(rawPayload.objective ?? current?.objective ?? payload.description ?? payload.title).trim()
+      || payload.title,
+    description: payload.description,
+    epic: current && (current.epic ?? null) === (payload.epic ?? null) ? current.epic : payload.epic,
+    status: payload.status,
+    priority: payload.priority,
+    risk: ["standard", "high"].includes(rawPayload.risk)
+      ? rawPayload.risk
+      : current?.risk ?? "standard",
+    execution_mode: payload.executionMode,
+    story_type: payload.storyType,
+    assignee: payload.assignee,
+    agent_owner: payload.agentOwner,
+    acceptance_criteria: canonicalCriteria(payload.doneCriteria, acceptanceFallback),
+    readiness_criteria: canonicalCriteria(payload.readyCriteria, current?.readiness_criteria ?? []),
+    dependencies: canonicalDependencies(payload, current?.dependencies ?? []),
+    context_files: payload.contextFiles,
+    validation,
+    subtasks: canonicalSubtasks(payload.subtasks, current?.subtasks ?? []),
+    labels: payload.labels,
+  };
+}
+
+function canonicalEpicEntity(payload, rawPayload, projectId, epicId, current = null) {
+  return {
+    ...(current ?? {}),
+    schema_version: 1,
+    revision: current ? current.revision + 1 : 1,
+    id: epicId,
+    type: "epic",
+    project: projectId,
+    title: payload.title,
+    objective: String(rawPayload.objective ?? current?.objective ?? payload.description ?? payload.title).trim()
+      || payload.title,
+    description: payload.description,
+    labels: payload.labels,
+  };
+}
+
+function canonicalEntityPatch(entity) {
+  const { schema_version, revision, id, type, project, ...patch } = entity;
+  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
 }
 
 async function readMarkdownCollection(baseDir, kind, project) {
@@ -791,6 +929,13 @@ function sendDomainError(res, error, fallback) {
   });
 }
 
+function sendMutationError(res, error, fallback) {
+  if (error instanceof DomainError || error instanceof FilesystemSafetyError) {
+    return sendDomainError(res, error, fallback);
+  }
+  return res.status(400).json({ error: fallback, detail: error.message });
+}
+
 async function tryCanonicalTransition(req, res, nextEpicProvided) {
   const { projectId, storyId } = req.params;
   const project = await getProjectConfig(projectId);
@@ -948,10 +1093,18 @@ app.post(
         return res.status(404).json({ error: "Historia no encontrada." });
       }
       if (result.story.schemaVersion === 1) {
-        return res.status(409).json({
-          error: "El checklist v1 requiere un comando canónico.",
-          code: "canonical_update_required",
+        const projectConfig = await getProjectConfig(projectId);
+        const commandResult = await toggleStoryCriterionCommand({
+          project: canonicalProject(projectConfig),
+          storyId,
+          criteriaType,
+          criterionIndex: index,
+          expectedRevision: req.body?.expectedRevision,
+          actor: "human-ui",
+          idempotencyKey: mutationIdempotencyKey(req),
         });
+        scheduleBroadcast();
+        return res.json({ ok: true, ...commandResult });
       }
 
       const raw = await fs.readFile(result.story.filePath, "utf8");
@@ -986,10 +1139,7 @@ app.post(
         toggledCriterion: criteria[index],
       });
     } catch (error) {
-      return res.status(500).json({
-        error: "No se pudo actualizar el checklist.",
-        detail: error.message,
-      });
+      return sendDomainError(res, error, "No se pudo actualizar el checklist.");
     }
   }
 );
@@ -1008,10 +1158,17 @@ app.post("/api/projects/:projectId/stories/:storyId/subtasks/:subtaskIndex/toggl
       return res.status(404).json({ error: "Historia no encontrada." });
     }
     if (result.story.schemaVersion === 1) {
-      return res.status(409).json({
-        error: "Las subtareas v1 requieren un comando canónico.",
-        code: "canonical_update_required",
+      const projectConfig = await getProjectConfig(projectId);
+      const commandResult = await toggleStorySubtaskCommand({
+        project: canonicalProject(projectConfig),
+        storyId,
+        subtaskIndex: index,
+        expectedRevision: req.body?.expectedRevision,
+        actor: "human-ui",
+        idempotencyKey: mutationIdempotencyKey(req),
       });
+      scheduleBroadcast();
+      return res.json({ ok: true, ...commandResult });
     }
 
     const raw = await fs.readFile(result.story.filePath, "utf8");
@@ -1040,10 +1197,7 @@ app.post("/api/projects/:projectId/stories/:storyId/subtasks/:subtaskIndex/toggl
       toggledSubtask: subtasks[index],
     });
   } catch (error) {
-    return res.status(500).json({
-      error: "No se pudo actualizar la subtarea.",
-      detail: error.message,
-    });
+    return sendDomainError(res, error, "No se pudo actualizar la subtarea.");
   }
 });
 
@@ -1058,37 +1212,18 @@ app.post("/api/projects/:projectId/epics", async (req, res) => {
 
     const payload = sanitizeEpicPayload(req.body ?? {}, projectId);
     const epicId = payload.id ?? `EPI-${toSlug(payload.title)}`;
-    const docsRoot = path.join(projectConfig.rootPath, projectConfig.docsPath ?? "docs/kanban");
-    const targetPath = path.join(docsRoot, "epics", `${epicId}.md`);
-
-    try {
-      await fs.access(targetPath);
-      return res.status(409).json({
-        error: "Ya existe una epica con ese ID.",
-        detail: `El archivo ${targetPath} ya existe.`,
-      });
-    } catch (error) {
-      if (error.code !== "ENOENT") {
-        throw error;
-      }
-    }
-
-    const frontmatter = {
-      id: epicId,
-      type: "epic",
-      project: projectId,
-      title: payload.title,
-      description: payload.description,
-      labels: payload.labels,
-    };
-
-    const filePath = await writeEpicFile(projectConfig, epicId, frontmatter, payload.body);
-    return res.status(201).json({ ok: true, id: epicId, filePath });
-  } catch (error) {
-    return res.status(400).json({
-      error: "No se pudo crear la epica.",
-      detail: error.message,
+    const commandResult = await createEpicCommand({
+      project: canonicalProject(projectConfig),
+      epic: canonicalEpicEntity(payload, req.body ?? {}, projectId, epicId),
+      body: payload.body,
+      expectedRevision: req.body?.expectedRevision ?? 0,
+      actor: "human-ui",
+      idempotencyKey: mutationIdempotencyKey(req),
     });
+    scheduleBroadcast();
+    return res.status(201).json({ ok: true, ...commandResult });
+  } catch (error) {
+    return sendMutationError(res, error, "No se pudo crear la epica.");
   }
 });
 
@@ -1106,10 +1241,25 @@ app.put("/api/projects/:projectId/epics/:epicId", async (req, res) => {
     }
 
     if (existing.schemaVersion === 1) {
-      return res.status(409).json({
-        error: "La edición de épicas v1 requiere un comando canónico.",
-        code: "canonical_update_required",
+      const projectDocument = canonicalProject(projectConfig);
+      const current = await readCanonicalEpic(projectDocument, epicId);
+      const payload = sanitizeEpicPayload({ ...req.body, id: epicId }, projectId);
+      if (payload.body !== current.body.trim()) {
+        throw new DomainError("body_preserved", "El body Markdown no se modifica mediante update.", {
+          status: 409,
+        });
+      }
+      const nextEpic = canonicalEpicEntity(payload, req.body ?? {}, projectId, epicId, current.entity);
+      const commandResult = await updateEpicCommand({
+        project: projectDocument,
+        epicId,
+        patch: canonicalEntityPatch(nextEpic),
+        expectedRevision: req.body?.expectedRevision,
+        actor: "human-ui",
+        idempotencyKey: mutationIdempotencyKey(req),
       });
+      scheduleBroadcast();
+      return res.json({ ok: true, ...commandResult });
     }
 
     const payload = sanitizeEpicPayload({ ...req.body, id: epicId }, projectId);
@@ -1125,10 +1275,7 @@ app.put("/api/projects/:projectId/epics/:epicId", async (req, res) => {
     await writeEpicFile(projectConfig, epicId, frontmatter, payload.body);
     return res.json({ ok: true, id: epicId });
   } catch (error) {
-    return res.status(400).json({
-      error: "No se pudo actualizar la epica.",
-      detail: error.message,
-    });
+    return sendMutationError(res, error, "No se pudo actualizar la epica.");
   }
 });
 
@@ -1143,75 +1290,18 @@ app.post("/api/projects/:projectId/stories", async (req, res) => {
 
     const payload = sanitizeStoryPayload(req.body ?? {}, projectId);
     const storyId = payload.id ?? `STO-${toSlug(payload.title)}`;
-    const docsRoot = path.join(projectConfig.rootPath, projectConfig.docsPath ?? "docs/kanban");
-    const targetPath = path.join(docsRoot, "stories", `${storyId}.md`);
-
-    try {
-      await fs.access(targetPath);
-      return res.status(409).json({
-        error: "Ya existe una historia con ese ID.",
-        detail: `El archivo ${targetPath} ya existe.`,
-      });
-    } catch (error) {
-      if (error.code !== "ENOENT") {
-        throw error;
-      }
-    }
-
-    const projects = await loadProjects();
-    const project = projects.find((item) => item.id === projectId);
-    const enrichedCandidate = enrichStories(
-      { ...project, epics: project?.epics ?? [] },
-      [
-        ...(project?.stories ?? []).map((story) => ({
-          ...story,
-          readyCriteria: coerceCriteria(story.readyCriteria),
-          doneCriteria: coerceCriteria(story.doneCriteria),
-        })),
-        {
-          id: storyId,
-          type: "story",
-          title: payload.title,
-          description: payload.description,
-          projectId,
-          projectName: project?.name ?? projectId,
-          status: payload.status,
-          epicId: payload.epic,
-          priority: payload.priority,
-          assignee: payload.assignee,
-          agentOwner: payload.agentOwner,
-          executionMode: payload.executionMode,
-          storyType: payload.storyType,
-          blockedBy: payload.blockedBy,
-          blocks: payload.blocks,
-          relatedTo: payload.relatedTo,
-          contextFiles: payload.contextFiles,
-          agentStatusNote: payload.agentStatusNote,
-          lastAgentUpdate: payload.lastAgentUpdate,
-          labels: payload.labels,
-          subtasks: payload.subtasks,
-          readyCriteria: payload.readyCriteria,
-          doneCriteria: payload.doneCriteria,
-          body: payload.body,
-        },
-      ]
-    ).find((story) => story.id === storyId);
-
-    if (payload.status === "developing" && !enrichedCandidate?.isReadyForDeveloping) {
-      return res.status(400).json({
-        error: "La historia no esta lista para pasar a developing.",
-      });
-    }
-
-    const frontmatter = sanitizeStoryFrontmatter({ ...payload, id: storyId, project: projectId });
-
-    const filePath = await writeStoryFile(projectConfig, storyId, frontmatter, payload.body);
-    return res.status(201).json({ ok: true, id: storyId, filePath });
-  } catch (error) {
-    return res.status(400).json({
-      error: "No se pudo crear la historia.",
-      detail: error.message,
+    const commandResult = await createStoryCommand({
+      project: canonicalProject(projectConfig),
+      story: canonicalStoryEntity(payload, req.body ?? {}, projectId, storyId),
+      body: payload.body,
+      expectedRevision: req.body?.expectedRevision ?? 0,
+      actor: "human-ui",
+      idempotencyKey: mutationIdempotencyKey(req),
     });
+    scheduleBroadcast();
+    return res.status(201).json({ ok: true, ...commandResult });
+  } catch (error) {
+    return sendMutationError(res, error, "No se pudo crear la historia.");
   }
 });
 
@@ -1227,11 +1317,25 @@ app.put("/api/projects/:projectId/stories/:storyId", async (req, res) => {
     }
 
     if (existing.story.schemaVersion === 1) {
-      return res.status(409).json({
-        error: "La edición completa de historias v1 requiere un comando canónico.",
-        code: "canonical_update_required",
-        detail: "Usa local-kanban; PUT legacy no puede mutar documentos v1.",
+      const projectDocument = canonicalProject(projectConfig);
+      const current = await readCanonicalStory(projectDocument, storyId);
+      const payload = sanitizeStoryPayload({ ...req.body, id: storyId }, projectId);
+      if (payload.body !== current.body.trim()) {
+        throw new DomainError("body_preserved", "El body Markdown no se modifica mediante update.", {
+          status: 409,
+        });
+      }
+      const nextStory = canonicalStoryEntity(payload, req.body ?? {}, projectId, storyId, current.entity);
+      const commandResult = await updateStoryCommand({
+        project: projectDocument,
+        storyId,
+        patch: canonicalEntityPatch(nextStory),
+        expectedRevision: req.body?.expectedRevision,
+        actor: "human-ui",
+        idempotencyKey: mutationIdempotencyKey(req),
       });
+      scheduleBroadcast();
+      return res.json({ ok: true, ...commandResult });
     }
 
     const payload = sanitizeStoryPayload({ ...req.body, id: storyId }, projectId);
@@ -1279,10 +1383,7 @@ app.put("/api/projects/:projectId/stories/:storyId", async (req, res) => {
     await writeStoryFile(projectConfig, storyId, frontmatter, payload.body);
     return res.json({ ok: true, id: storyId });
   } catch (error) {
-    return res.status(400).json({
-      error: "No se pudo actualizar la historia.",
-      detail: error.message,
-    });
+    return sendMutationError(res, error, "No se pudo actualizar la historia.");
   }
 });
 
