@@ -15,9 +15,8 @@ Metodología local para planificar, coordinar y verificar proyectos largos desar
 Requisitos: macOS, Node.js 22.13 o superior y npm.
 
 ```bash
-git clone <repo-url> local-kanban
-cd local-kanban
-npm install
+cd /ruta/al/checkout/local-kanban
+npm ci
 npm link
 npm run skill:install
 npm run skill:verify
@@ -70,6 +69,8 @@ npm run dev
 
 La UI lee únicamente los proyectos registrados. `config/projects.json` puede inspeccionarse o corregirse manualmente por un humano en una recuperación excepcional, pero no forma parte del flujo normal de agentes.
 
+La instancia de producción local escucha en `127.0.0.1:4010`. No expongas el servidor en una interfaz de red: la API no incorpora autenticación ni TLS y su modelo de confianza es exclusivamente local.
+
 ## Modelo funcional
 
 Estados visibles:
@@ -100,15 +101,12 @@ checkpoint/handoff, bloqueo humano, fencing y cierre) y `benchmark` ejecuta un
 fixture reproducible de 1.000 historias. Ambos son gates de CI.
 
 Antes de versionar la metodología, `npm run release:verify` ejecuta todos los gates y
-confirma además que la skill personal sigue enlazada al fichero canónico de este checkout y
-completa un flujo real desde un repositorio consumidor temporal mediante la CLI global instalada.
+completa un flujo real desde un repositorio consumidor temporal con una instalación aislada
+de la skill. `npm run skill:verify` comprueba por separado el symlink personal de este Mac.
 
 ## Documentación
 
 - [Instalación y setup](docs/INSTALLATION_AND_SETUP.md)
 - [Preparar un proyecto consumidor](docs/PROJECT_KANBAN_SETUP.md)
-- [Plantilla de contrato para AGENTS.md](docs/AGENTS_WORK_CONTRACT_TEMPLATE.md)
+- [Arquitectura as-built](docs/ARCHITECTURE.md)
 - [Skill canónica](skills/local-kanban/SKILL.md)
-- [Documento de mejoras técnicas](docs/AGENTIC_KANBAN_TECHNICAL_IMPROVEMENTS.md)
-- [Dogfooding y registro de desalineamientos](docs/DOGFOOD_ALIGNMENT_REPORT_2026-07-14.md)
-- [Segunda auditoría exhaustiva](docs/DOGFOOD_EXHAUSTIVE_REPORT_2026-07-14.md)

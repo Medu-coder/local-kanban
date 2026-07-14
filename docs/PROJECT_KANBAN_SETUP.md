@@ -50,7 +50,9 @@ No hace falta que un agente conozca la ruta del checkout de Local Kanban, edite 
 
 ## 3. Contrato de `AGENTS.md`
 
-Si el proyecto ya tiene `AGENTS.md`, se conservan sus instrucciones. Debe incluir como mínimo la cláusula de [AGENTS_WORK_CONTRACT_TEMPLATE.md](AGENTS_WORK_CONTRACT_TEMPLATE.md):
+Si el proyecto ya tiene `AGENTS.md`, se conservan sus instrucciones. `local-kanban init`
+añade de forma idempotente esta cláusula mínima, que coincide con el contrato generado por
+la implementación:
 
 ```md
 <!-- local-kanban-contract -->
@@ -62,6 +64,8 @@ Si el proyecto ya tiene `AGENTS.md`, se conservan sus instrucciones. Debe inclui
 ```
 
 La invocación por nombre permite que Codex resuelva la skill personal vigente mediante su symlink; no se añade una referencia absoluta específica de una máquina.
+Las reglas operativas completas no se copian al proyecto: se cargan desde la
+[skill canónica](../skills/local-kanban/SKILL.md) para evitar contratos divergentes.
 
 ## 4. Verificar
 

@@ -1,6 +1,14 @@
 node_modules
 dist
 npm-debug.log*
+*.log
+*.pid
+*.pid.lock
+coverage/
+*.tgz
+.DS_Store
+**/.DS_Store
+.claude/
 .e2e
 playwright-report
 test-results

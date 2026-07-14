@@ -18,9 +18,8 @@ npm --version
 ## 1. Instalar Local Kanban
 
 ```bash
-git clone <repo-url> local-kanban
-cd local-kanban
-npm install
+cd /ruta/al/checkout/local-kanban
+npm ci
 npm link
 ```
 
@@ -108,21 +107,28 @@ Esto levanta:
 Para el servicio administrado localmente:
 
 ```bash
+npm run build
 npm run start
 npm run status
+npm run logs
+npm run restart
 npm run stop
 ```
 
 La UI no es necesaria para que los agentes operen; sirve para observación y control humano.
+El servicio escucha en `127.0.0.1:4010` por defecto. No cambies `HOST` para exponerlo
+a la red: la API no incorpora autenticación ni TLS y está diseñada para un único usuario local.
 
 ## Actualizar la instalación
 
 ```bash
 cd /ruta/a/local-kanban
 git pull
-npm install
+npm ci
 npm link
 npm run skill:verify
+npm run build
+npm run restart
 ```
 
 Si la verificación del symlink falla, ejecuta `npm run skill:install` y vuelve a verificar.
@@ -135,8 +141,9 @@ Antes de publicar una actualización del Kanban ejecuta también:
 npm run release:verify
 ```
 
-Este gate incluye checks, unitarios, evaluaciones, benchmark, build, E2E y la
-verificación local del symlink de la skill. Las evaluaciones son deterministas y cubren las invariantes de coordinación. El
+Este gate incluye checks, unitarios, evaluaciones, benchmark, auditoría de dependencias, build, E2E y una
+instalación aislada de la skill. La verificación del symlink personal se mantiene como
+comprobación local separada. Las evaluaciones son deterministas y cubren las invariantes de coordinación. El
 benchmark usa `fixtures/long-project/scenario.json`; informa rendimiento para detectar
 regresiones, pero su gate estable valida el resultado semántico, no un umbral temporal
 dependiente de la máquina.
