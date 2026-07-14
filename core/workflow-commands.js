@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
 import { transitionStoryCommand, validateProjectDocuments } from "./commands.js";
@@ -28,6 +29,34 @@ import { reconcileProjectDocuments } from "./reconciliation.js";
 import { evaluateStoryGates } from "./story.js";
 
 const execFileAsync = promisify(execFile);
+const CLAIM_WORKFLOW_LOCK = "claim-workflow";
+
+async function withClaimWorkflowLock(rootPath, callback) {
+  const owner = randomUUID();
+  const deadline = Date.now() + 10_000;
+  let runtime = null;
+
+  while (!runtime) {
+    const candidate = openRuntime(rootPath);
+    try {
+      candidate.acquireWorkflowLock({ name: CLAIM_WORKFLOW_LOCK, owner });
+      runtime = candidate;
+    } catch (error) {
+      candidate.close();
+      if (error.code !== "workflow_lock_busy" || Date.now() >= deadline) {
+        throw error;
+      }
+      await delay(20);
+    }
+  }
+
+  try {
+    return await callback();
+  } finally {
+    runtime.releaseWorkflowLock({ name: CLAIM_WORKFLOW_LOCK, owner });
+    runtime.close();
+  }
+}
 
 function requireText(value, field) {
   const normalized = String(value ?? "").trim();
@@ -413,69 +442,71 @@ export async function claimStoryWorkflow(options) {
   const { project, paths, story } = await storyContext(options);
   const actor = requireText(options.actor ?? options.agentId ?? "codex", "actor");
   const agentId = requireText(options.agentId ?? actor, "agentId");
-  const runtime = openRuntime(paths.rootPath);
-  let claimed;
-  try {
-    assertRuntimeReady(await runtimeDegradations(project, paths, runtime, "claim-preflight"));
-    if (!["backlog", "developing", "testing"].includes(story.status)) {
-      throw new DomainError("claim_status_invalid", "Solo se puede reclamar una historia ejecutable o en verificación.", {
-        details: { storyId: story.id, status: story.status },
-        status: 409,
+  return withClaimWorkflowLock(paths.rootPath, async () => {
+    const runtime = openRuntime(paths.rootPath);
+    let claimed;
+    try {
+      assertRuntimeReady(await runtimeDegradations(project, paths, runtime, "claim-preflight"));
+      if (!["backlog", "developing", "testing"].includes(story.status)) {
+        throw new DomainError("claim_status_invalid", "Solo se puede reclamar una historia ejecutable o en verificación.", {
+          details: { storyId: story.id, status: story.status },
+          status: 409,
+        });
+      }
+      claimed = runtime.claimStory({
+        storyId: story.id,
+        agentId,
+        actor,
+        attemptId: options.attemptId ?? randomUUID(),
+        sessionId: options.sessionId,
       });
+    } finally {
+      runtime.close();
     }
-    claimed = runtime.claimStory({
-      storyId: story.id,
-      agentId,
-      actor,
-      attemptId: options.attemptId ?? randomUUID(),
-      sessionId: options.sessionId,
-    });
-  } finally {
-    runtime.close();
-  }
 
-  try {
-    let currentStory = story;
-    if (story.status === "backlog") {
-      await transitionStoryCommand({
-        project,
-        storyId: story.id,
-        expectedRevision: story.revision,
-        nextStatus: "developing",
-        actor,
-        actorRole: "specialist",
-        idempotencyKey: randomUUID(),
-      });
-      currentStory = (await readCanonicalStory(paths, story.id)).entity;
-    }
-    const currentRuntime = openRuntime(paths.rootPath);
     try {
-      return buildOperationalCapsule({
-        story: currentStory,
-        coordination: currentRuntime.getCoordinationState(story.id),
-        gates: await currentGates(project, currentStory),
-        nextAction: currentStory.status === "testing"
-          ? (currentStory.risk === "high" ? "independent_review" : "integrated_verification")
-          : "execute",
-      });
-    } finally {
-      currentRuntime.close();
+      let currentStory = story;
+      if (story.status === "backlog") {
+        await transitionStoryCommand({
+          project,
+          storyId: story.id,
+          expectedRevision: story.revision,
+          nextStatus: "developing",
+          actor,
+          actorRole: "specialist",
+          idempotencyKey: randomUUID(),
+        });
+        currentStory = (await readCanonicalStory(paths, story.id)).entity;
+      }
+      const currentRuntime = openRuntime(paths.rootPath);
+      try {
+        return buildOperationalCapsule({
+          story: currentStory,
+          coordination: currentRuntime.getCoordinationState(story.id),
+          gates: await currentGates(project, currentStory),
+          nextAction: currentStory.status === "testing"
+            ? (currentStory.risk === "high" ? "independent_review" : "integrated_verification")
+            : "execute",
+        });
+      } finally {
+        currentRuntime.close();
+      }
+    } catch (error) {
+      const rollbackRuntime = openRuntime(paths.rootPath);
+      try {
+        rollbackRuntime.releaseClaim({
+          storyId: story.id,
+          attemptId: claimed.attempt.id,
+          fencingToken: claimed.claim.fencingToken,
+          actor,
+          outcome: "failed",
+        });
+      } finally {
+        rollbackRuntime.close();
+      }
+      throw error;
     }
-  } catch (error) {
-    const rollbackRuntime = openRuntime(paths.rootPath);
-    try {
-      rollbackRuntime.releaseClaim({
-        storyId: story.id,
-        attemptId: claimed.attempt.id,
-        fencingToken: claimed.claim.fencingToken,
-        actor,
-        outcome: "failed",
-      });
-    } finally {
-      rollbackRuntime.close();
-    }
-    throw error;
-  }
+  });
 }
 
 export async function checkpointStoryWorkflow(options) {

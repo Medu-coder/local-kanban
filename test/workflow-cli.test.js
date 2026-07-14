@@ -532,6 +532,25 @@ test("CLI mantiene un único ganador ante claims concurrentes reales", async () 
     const capsule = JSON.parse(winners[0].value.stdout);
     assert.equal(capsule.execution.fencingToken, 1);
     assert.ok(["agent-a", "agent-b"].includes(capsule.execution.agentId));
+
+    const runtime = openRuntime(rootPath);
+    try {
+      assert.deepEqual(runtime.listProblemOperations(), []);
+      assert.deepEqual(runtime.listQuarantines(), []);
+      assert.equal(runtime.db.prepare("SELECT COUNT(*) AS count FROM workflow_locks").get().count, 0);
+      assert.equal(runtime.getCoordinationState("STO-RACE").claim?.fencingToken, 1);
+    } finally {
+      runtime.close();
+    }
+    const stored = (await readStory({
+      schema_version: 1,
+      id: "concurrent-project",
+      name: "Concurrent",
+      rootPath,
+      docsPath: "docs/kanban",
+    }, "STO-RACE")).story;
+    assert.equal(stored.status, "developing");
+    assert.equal(stored.revision, 2);
   } finally {
     await fs.rm(rootPath, { recursive: true, force: true });
   }

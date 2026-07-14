@@ -100,6 +100,12 @@ const runtimeSchema = `
   CREATE INDEX IF NOT EXISTS claims_story_history_idx
     ON claims (story_id, fencing_token DESC);
 
+  CREATE TABLE IF NOT EXISTS workflow_locks (
+    name TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS checkpoints (
     id TEXT PRIMARY KEY,
     story_id TEXT NOT NULL,
@@ -319,6 +325,35 @@ export class RuntimeStore {
       this.db.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  acquireWorkflowLock(input) {
+    const name = requireText(input.name, "name");
+    const owner = requireText(input.owner, "owner");
+    const timestamp = toTimestamp(input.now);
+    const expiresAt = leaseExpiration(timestamp, input.durationMs ?? 5 * 60 * 1000);
+    return this.transaction(() => {
+      this.db.prepare("DELETE FROM workflow_locks WHERE expires_at <= ?").run(timestamp);
+      const existing = this.db.prepare("SELECT owner, expires_at FROM workflow_locks WHERE name = ?").get(name);
+      if (existing) {
+        throw new DomainError("workflow_lock_busy", "Otro proceso está coordinando este flujo.", {
+          details: { name, owner: existing.owner, expiresAt: existing.expires_at },
+          status: 409,
+        });
+      }
+      this.db
+        .prepare("INSERT INTO workflow_locks (name, owner, expires_at) VALUES (?, ?, ?)")
+        .run(name, owner, expiresAt);
+      return { name, owner, expiresAt };
+    });
+  }
+
+  releaseWorkflowLock(input) {
+    const name = requireText(input.name, "name");
+    const owner = requireText(input.owner, "owner");
+    return this.transaction(
+      () => this.db.prepare("DELETE FROM workflow_locks WHERE name = ? AND owner = ?").run(name, owner).changes > 0,
+    );
   }
 
   getByIdempotencyKey(idempotencyKey) {
