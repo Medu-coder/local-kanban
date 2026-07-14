@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import matter from "gray-matter";
 
 import { DomainError } from "./errors.js";
+import { diagnoseProject } from "./diagnostics.js";
 import { resolveProjectPaths, readFileLimited } from "./paths.js";
 import { getRegisteredProject } from "./project.js";
 import { openRuntime } from "./runtime.js";
@@ -280,8 +281,17 @@ export async function doctorProject(options = {}) {
   const runtime = openRuntime(paths.rootPath);
   try {
     const recovery = await recoverPendingOperations(paths, runtime);
+    const diagnosis = await diagnoseProject({
+      validation,
+      recovery,
+      paths,
+      runtime,
+      checkSkill: options.checkSkill,
+      skillSource: options.skillSource,
+      skillTarget: options.skillTarget,
+    });
     return {
-      ok: validation.ok && recovery.every((item) => item.status !== "quarantined"),
+      ...diagnosis,
       validation: {
         ok: validation.ok,
         counts: validation.counts,
