@@ -103,6 +103,13 @@ export function StoryDetail({
       </div>
 
       <div className="story-status-row">
+        {story.quarantine ? <span className="status-chip status-chip--blocked">Cuarentena</span> : null}
+        {story.coordination?.claim?.status === "stale" ? (
+          <span className="status-chip status-chip--blocked">Lease stale</span>
+        ) : null}
+        {story.coordination?.operationalStatus ? (
+          <span className="status-chip">{story.coordination.operationalStatus}</span>
+        ) : null}
         {story.isBlocked ? <span className="status-chip status-chip--blocked">Blocked</span> : null}
         {story.isReadyForDeveloping ? <span className="status-chip status-chip--ready">Ready</span> : null}
         {story.isDoneValidated ? <span className="status-chip status-chip--validated">Done validado</span> : null}
@@ -144,6 +151,35 @@ export function StoryDetail({
           <dd>{story.lastAgentUpdate ? new Date(story.lastAgentUpdate).toLocaleString() : "Sin fecha"}</dd>
         </div>
       </dl>
+
+      {story.coordination ? (
+        <section className="detail-section" data-testid="story-operational-state">
+          <h3>Ejecución agéntica</h3>
+          <dl className="detail-grid">
+            <div><dt>Agente</dt><dd>{story.coordination.claim?.agentId ?? "Sin claim"}</dd></div>
+            <div><dt>Intento</dt><dd>{story.coordination.attempt?.id ?? "—"}</dd></div>
+            <div><dt>Fencing</dt><dd>{story.coordination.claim?.fencingToken ?? "—"}</dd></div>
+            <div><dt>Lease</dt><dd>{story.coordination.claim?.leaseExpiresAt ? new Date(story.coordination.claim.leaseExpiresAt).toLocaleString() : "—"}</dd></div>
+          </dl>
+          {story.coordination.blocks?.length ? (
+            <ul className="subtask-list">
+              {story.coordination.blocks.map((block) => (
+                <li key={block.id}><strong>{block.type}</strong>: {block.action} ({block.owner})</li>
+              ))}
+            </ul>
+          ) : null}
+          {story.coordination.checkpoint ? (
+            <p className="detail-copy"><strong>Checkpoint:</strong> {story.coordination.checkpoint.summary}</p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {story.quarantine ? (
+        <section className="detail-section" data-testid="story-quarantine">
+          <h3>Conflicto en cuarentena</h3>
+          <p className="detail-copy">{story.quarantine.reason}</p>
+        </section>
+      ) : null}
 
       <section className="detail-section">
         <h3>Descripción</h3>

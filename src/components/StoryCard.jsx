@@ -37,6 +37,13 @@ export function StoryCard({ story, onSelect, onDragStart, onDragEnd }) {
       {story.epicTitle ? <p className="story-card__epic">{story.epicTitle}</p> : null}
 
       <div className="story-card__flags">
+        {story.quarantine ? <span className="status-chip status-chip--blocked">Cuarentena</span> : null}
+        {story.coordination?.claim?.status === "stale" ? (
+          <span className="status-chip status-chip--blocked">Lease stale</span>
+        ) : null}
+        {story.coordination?.operationalStatus && story.coordination.operationalStatus !== "unclaimed" ? (
+          <span className="status-chip">{story.coordination.operationalStatus}</span>
+        ) : null}
         {story.isBlocked ? <span className="status-chip status-chip--blocked">Blocked</span> : null}
         {story.isReadyForDeveloping ? <span className="status-chip status-chip--ready">Ready</span> : null}
         {story.isDoneValidated ? <span className="status-chip status-chip--validated">Done validado</span> : null}
