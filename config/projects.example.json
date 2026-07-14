@@ -1,5 +1,6 @@
 [
   {
+    "schema_version": 1,
     "id": "mi-proyecto",
     "name": "Mi proyecto",
     "rootPath": "/ruta/absoluta/al/proyecto",

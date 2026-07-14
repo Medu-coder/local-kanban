@@ -1,132 +1,157 @@
-# Installation And Setup
+# Instalación y setup
 
-Esta guía sirve para clonar `Local Kanban` en otro PC, configurarlo con rutas locales nuevas y arrancarlo sin depender del entorno original.
+Esta guía instala Local Kanban en un Mac, enlaza su skill canónica con Codex y prepara proyectos consumidores sin duplicar la metodología.
 
 ## Requisitos
 
-- Node.js 18 o superior
-- npm
-- Uno o más proyectos locales que vayan a ser monitorizados por el Kanban
-
-Comprueba el entorno:
+- macOS.
+- Node.js 22.13 o superior.
+- npm.
+- Codex con soporte de skills personales en `~/.agents/skills`.
+- Uno o más repositorios Git locales que vayan a usar la metodología.
 
 ```bash
 node --version
 npm --version
 ```
 
-## Instalación
+## 1. Instalar Local Kanban
 
 ```bash
 git clone <repo-url> local-kanban
 cd local-kanban
 npm install
-npm run setup
+npm link
 ```
 
-## Configuración de proyectos
+`npm link` deja disponible el ejecutable `local-kanban` para invocarlo desde cualquier proyecto local.
 
-1. Ejecuta `npm run setup`.
-2. Edita `config/projects.json`.
-3. Sustituye `rootPath` por la ruta absoluta real de cada proyecto en esa máquina.
-4. Mantén `docsPath` como `docs/kanban`, salvo que quieras usar otra carpeta por proyecto.
+## 2. Enlazar la skill canónica
 
-`npm run setup` crea `config/projects.json` desde la plantilla si todavía no existe. Si ya existe, no lo sobrescribe. Si quieres regenerarlo desde cero, usa `npm run setup:reset`.
-
-Cuando se ejecuta en una terminal normal, `npm run setup` abre un asistente guiado para dejar configurados uno o varios proyectos en esa misma pasada. Si prefieres un flujo sin preguntas:
+Desde este repositorio:
 
 ```bash
-npm run setup -- --no-interactive
+npm run skill:install
+npm run skill:verify
 ```
 
-Si un agente ya ha recogido las rutas y nombres que quieres usar, también puede dejarlo resuelto directamente:
-
-```bash
-npm run setup -- --projects-json '[{"name":"Billing API","rootPath":"/Users/alguien/Code/billing-api"},{"name":"Frontend App","rootPath":"/Users/alguien/Code/frontend-app"}]'
-```
-
-Ejemplo:
-
-```json
-[
-  {
-    "id": "billing-api",
-    "name": "Billing API",
-    "rootPath": "/Users/alguien/Code/billing-api",
-    "docsPath": "docs/kanban"
-  },
-  {
-    "id": "frontend-app",
-    "name": "Frontend App",
-    "rootPath": "/Users/alguien/Code/frontend-app",
-    "docsPath": "docs/kanban"
-  }
-]
-```
-
-## Estructura esperada en cada proyecto
-
-Cada proyecto monitorizado debe tener:
+La instalación crea o repara de forma idempotente:
 
 ```text
-AGENTS.md
-docs/
-  kanban/
-    epics/
-    stories/
+~/.agents/skills/local-kanban
+  -> <este-repo>/skills/local-kanban
 ```
 
-`AGENTS.md` es obligatorio: debe importar por referencia `skills/local-kanban-agent/SKILL.md` de este repositorio para que cualquier agente externo herede exactamente el mismo contrato de trabajo.
+No copies `SKILL.md` a otros directorios. El symlink garantiza que una actualización del repositorio sea visible para nuevas tareas de Codex. Una tarea que ya haya cargado la skill puede conservar la versión anterior hasta la siguiente invocación.
 
-La guía operativa para preparar esos repositorios está en [PROJECT_KANBAN_SETUP.md](PROJECT_KANBAN_SETUP.md).
+Si la ruta de destino ya existe y no es un symlink, el comando se detiene para no sobrescribir contenido personal. Muévela o elimínala manualmente después de comprobar qué contiene y repite la instalación.
 
-## Arranque
+## 3. Inicializar cada proyecto consumidor
 
-Modo desarrollo:
+Desde la raíz Git del proyecto:
+
+```bash
+cd /ruta/al/proyecto
+local-kanban init --id mi-proyecto --name "Mi proyecto"
+```
+
+Opcionalmente puede elegirse una ruta durable distinta de `docs/kanban`:
+
+```bash
+local-kanban init --docs-path planning/kanban
+```
+
+`init` puede ejecutarse varias veces sin duplicar el registro. Crea la estructura, prepara el runtime local ignorado por Git, registra el proyecto en la UI y añade la cláusula de Local Kanban a `AGENTS.md` sin borrar instrucciones existentes.
+
+El agente debe realizar esta operación a través de `$local-kanban`. No debe editar manualmente el registro central, el frontmatter o SQLite para simular la inicialización.
+
+## 4. Verificar el proyecto
+
+Desde el proyecto consumidor:
+
+```bash
+local-kanban validate
+local-kanban doctor
+```
+
+Además, comprueba que:
+
+- `AGENTS.md` indica que debe invocarse `$local-kanban`;
+- existen `docs/kanban/epics` y `docs/kanban/stories`;
+- `.gitignore` contiene `.local-kanban/`;
+- el proyecto aparece una sola vez en `config/projects.json` de Local Kanban.
+
+## 5. Arrancar la UI
+
+Desde el repositorio Local Kanban:
 
 ```bash
 npm run dev
 ```
 
 Esto levanta:
-- frontend Vite en `http://localhost:5173`
-- API local en `http://localhost:4010`
 
-Modo servidor API solo:
+- frontend Vite en `http://localhost:5173`;
+- API local en `http://localhost:4010`.
+
+Para el servicio administrado localmente:
 
 ```bash
 npm run start
+npm run status
+npm run stop
 ```
 
-## Verificación mínima
+La UI no es necesaria para que los agentes operen; sirve para observación y control humano.
 
-1. Abre `http://localhost:5173`.
-2. Comprueba que aparece al menos un proyecto en el sidebar izquierdo.
-3. Comprueba que las épicas e historias del proyecto se visualizan en el board.
-4. Abre una historia y verifica que el detalle coincide con su `.md`.
+## Actualizar la instalación
 
-## Si un proyecto no aparece bien
+```bash
+cd /ruta/a/local-kanban
+git pull
+npm install
+npm link
+npm run skill:verify
+```
 
-Revisa, en este orden:
+Si la verificación del symlink falla, ejecuta `npm run skill:install` y vuelve a verificar.
 
-1. `config/projects.json`
-   - `rootPath` debe ser absoluto y existir en esa máquina.
-2. Estructura `docs/kanban`
-   - deben existir `epics/` y `stories/`
-3. Frontmatter YAML
-   - `id`, `title`, `status` y `type` deben ser válidos
-4. Estados soportados
-   - `backlog`
-   - `developing`
-   - `testing`
-   - `done`
+## Administración humana excepcional
 
-## Distribución
+`config/projects.json` es el registro central de la UI. El flujo normal lo mantiene mediante `local-kanban init`. Un humano puede inspeccionarlo o repararlo manualmente si una recuperación lo exige, preservando rutas absolutas locales y sin publicar ese fichero con datos personales.
 
-Si vas a compartir el proyecto por GitHub o como plantilla:
+La edición manual de `docs/kanban/*.md` también es excepcional. Después de una intervención humana ejecuta `local-kanban validate` y `local-kanban doctor`; no edites nunca `.local-kanban/runtime.sqlite`.
 
-- no publiques tus rutas locales reales en `config/projects.json`
-- publica `config/projects.example.json`
-- documenta siempre que cada usuario debe crear su propio `config/projects.json`
-- distribuye también la skill de agentes incluida en [skills/local-kanban-agent/SKILL.md](../skills/local-kanban-agent/SKILL.md)
-- si quieres una instalación guiada por agente, usa también [skills/local-kanban-installer/SKILL.md](../skills/local-kanban-installer/SKILL.md)
+## Resolución de problemas
+
+### La skill no aparece en Codex
+
+```bash
+npm run skill:verify
+ls -la ~/.agents/skills/local-kanban
+```
+
+Abre una tarea nueva después de reparar el enlace.
+
+### `local-kanban` no está disponible
+
+```bash
+cd /ruta/a/local-kanban
+npm link
+local-kanban --help
+```
+
+### El proyecto no aparece en la UI
+
+Ejecuta desde su raíz Git:
+
+```bash
+local-kanban init
+local-kanban doctor
+```
+
+Comprueba después que la UI esté leyendo el mismo checkout de Local Kanban donde se registró el proyecto.
+
+### El proyecto está degradado
+
+No corrijas SQLite o el frontmatter a ciegas. Invoca `$local-kanban`, ejecuta `local-kanban doctor` y sigue el diagnóstico. Si exige una decisión humana, conserva la entidad en cuarentena hasta resolverla.

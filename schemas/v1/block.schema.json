@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local-kanban.dev/schemas/v1/block.schema.json",
+  "title": "Local Kanban block v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "description", "owner", "action", "resume_condition"],
+  "properties": {
+    "type": {
+      "enum": ["human", "dependency", "credential", "environment", "conflict", "external", "technical"]
+    },
+    "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "evidence": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "owner": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "action": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "resume_condition": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt", "max_attempts"],
+      "properties": {
+        "attempt": { "type": "integer", "minimum": 0 },
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "next_retry_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "retry": {} },
+        "required": ["retry"]
+      },
+      "then": { "properties": { "type": { "const": "technical" } } }
+    }
+  ]
+}

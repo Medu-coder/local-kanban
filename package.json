@@ -3,9 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "bin": {
+    "local-kanban": "bin/local-kanban.js"
+  },
   "scripts": {
-    "setup": "node scripts/setup.js",
-    "setup:reset": "node scripts/setup.js --force",
+    "setup": "node scripts/setup.js && node scripts/manage-skill.js install",
+    "setup:reset": "node scripts/setup.js --force && node scripts/manage-skill.js install",
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite",
     "dev:server": "node --watch server/index.js",
@@ -15,10 +21,16 @@
     "restart": "pm2 restart ecosystem.config.cjs",
     "status": "pm2 status",
     "logs": "pm2 logs",
+    "local-kanban": "node bin/local-kanban.js",
+    "skill:install": "node scripts/manage-skill.js install",
+    "skill:verify": "node scripts/manage-skill.js verify",
+    "test:unit": "node --test test/*.test.js",
+    "test:skill": "node --test test/skill-management.test.js",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
+    "ajv": "^8.20.0",
     "d3-drag": "^3.0.0",
     "d3-force": "^3.0.0",
     "d3-selection": "^3.0.0",

@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local-kanban.dev/schemas/v1/criterion.schema.json",
+  "title": "Local Kanban criterion v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "kind", "checked"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "kind": { "const": "manual" },
+        "checked": { "type": "boolean" },
+        "evidence_types": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "test",
+              "build",
+              "lint",
+              "screenshot",
+              "api_assertion",
+              "benchmark",
+              "security_scan",
+              "review",
+              "human_approval"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "kind", "rule"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "kind": { "const": "derived" },
+        "rule": {
+          "enum": [
+            "dependencies_done",
+            "all_subtasks_done",
+            "has_assignee",
+            "has_agent_owner",
+            "has_context_files",
+            "story_in_testing"
+          ]
+        },
+        "evidence_types": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "test",
+              "build",
+              "lint",
+              "screenshot",
+              "api_assertion",
+              "benchmark",
+              "security_scan",
+              "review",
+              "human_approval"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

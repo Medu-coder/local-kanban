@@ -5,3 +5,4 @@ npm-debug.log*
 playwright-report
 test-results
 config/projects.json
+.local-kanban/

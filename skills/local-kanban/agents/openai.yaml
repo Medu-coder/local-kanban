@@ -1,0 +1,4 @@
+interface:
+  display_name: "Local Kanban"
+  short_description: "Orquesta desarrollo largo con agentes"
+  default_prompt: "Usa $local-kanban para inicializar el proyecto y ejecutar la siguiente historia elegible."

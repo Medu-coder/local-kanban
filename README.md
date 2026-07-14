@@ -1,118 +1,94 @@
 # Local Kanban
 
-Kanban local multiproyecto inspirado en Jira para gestionar épicas e historias definidas en Markdown.
+Metodología local para planificar, coordinar y verificar proyectos largos desarrollados con Codex y subagentes. Markdown conserva el trabajo durable; la CLI y una SQLite local aplican las invariantes operativas; la web permite al humano observar y gobernar excepciones.
 
-## Qué hace
+## Principios de uso
 
-- Lee proyectos configurados en `config/projects.json`.
-- Escanea `docs/kanban/epics/*.md` y `docs/kanban/stories/*.md` dentro de cada proyecto.
-- Agrupa historias por épica.
-- Muestra el Kanban en swimlanes por épica, con progreso agregado por cada épica.
-- Filtra por épica y busca por texto dentro del proyecto activo.
-- Permite crear y editar historias desde la UI.
-- Permite crear y editar épicas desde la UI.
-- Permite crear historias rápidamente dentro de una épica concreta y en un estado concreto.
-- Mueve historias entre `backlog`, `developing`, `testing` y `done` con drag and drop.
-- Persiste el nuevo estado directamente en el `.md` original.
-- Soporta ownership agéntico, dependencias entre historias y contexto operativo.
-- Soporta `ready_criteria` y `done_criteria` como checklist interactivo con validación mixta.
-- Bloquea el paso a `developing` cuando una historia no cumple sus dependencias o criterios de ready.
+- Los agentes entran siempre por la skill canónica `$local-kanban`.
+- La skill opera mediante la CLI `local-kanban`; los agentes no editan directamente `docs/kanban`, `.local-kanban` ni `config/projects.json`.
+- La edición manual de Markdown queda reservada al humano para mantenimiento o recuperación excepcional.
+- El orquestador coordina, integra y es el único rol que marca una historia como `done`.
+- La UI es opcional para los agentes: el flujo debe funcionar con la web apagada.
 
-## Arranque
+## Instalación local
+
+Requisitos: macOS, Node.js 22.13 o superior y npm.
 
 ```bash
+git clone <repo-url> local-kanban
+cd local-kanban
 npm install
-npm run setup
+npm link
+npm run skill:install
+npm run skill:verify
+```
+
+`npm link` expone el ejecutable `local-kanban`. `npm run skill:install` crea el symlink personal:
+
+```text
+~/.agents/skills/local-kanban
+  -> <este-repo>/skills/local-kanban
+```
+
+La fuente canónica permanece en [skills/local-kanban/SKILL.md](skills/local-kanban/SKILL.md). Al actualizar este repositorio, una nueva invocación de la skill carga la versión vigente sin mantener copias divergentes.
+
+Consulta la guía completa en [docs/INSTALLATION_AND_SETUP.md](docs/INSTALLATION_AND_SETUP.md).
+
+## Inicializar un proyecto consumidor
+
+Desde la raíz Git del proyecto que se va a desarrollar:
+
+```bash
+local-kanban init --id mi-proyecto --name "Mi proyecto"
+local-kanban validate
+local-kanban doctor
+```
+
+`init` es idempotente y se encarga de:
+
+- registrar o actualizar el proyecto en el registro central;
+- crear `docs/kanban/epics` y `docs/kanban/stories`;
+- crear `.local-kanban/` y añadirlo a `.gitignore`;
+- añadir a `AGENTS.md` la cláusula de activación de `$local-kanban` sin reemplazar reglas existentes.
+
+Los agentes deben invocar `$local-kanban` y consultar `local-kanban --help` antes de operar. No deben sustituir un comando ausente por una edición directa.
+
+## UI humana
+
+```bash
 npm run dev
 ```
 
 - Frontend: `http://localhost:5173`
 - API local: `http://localhost:4010`
 
-## Instalación Y Setup
+La UI lee únicamente los proyectos registrados. `config/projects.json` puede inspeccionarse o corregirse manualmente por un humano en una recuperación excepcional, pero no forma parte del flujo normal de agentes.
 
-La guía completa está en [docs/INSTALLATION_AND_SETUP.md](docs/INSTALLATION_AND_SETUP.md).
+## Modelo funcional
 
-Resumen rápido:
+Estados visibles:
 
-```bash
-git clone <repo-url> local-kanban
-cd local-kanban
-npm install
-npm run setup
-# editar config/projects.json con rutas absolutas reales si aún no lo has hecho
-npm run dev
+```text
+backlog -> developing -> testing -> done
 ```
 
-No hace falta construir un ejecutable nativo. El flujo recomendado es `clone -> npm install -> npm run setup`.
+Las historias usan IDs `STO-*`; las épicas, `EPI-*`. Readiness, bloqueos, claims, leases, intentos y revisión se gestionan mediante la skill y el núcleo de dominio, no mediante estados inventados ni edición libre del frontmatter.
 
-`npm run setup` abre un asistente guiado cuando detecta una terminal interactiva. Para agentes o automatizaciones, usa `npm run setup -- --no-interactive`.
-
-Si un agente ya te ha preguntado qué proyectos quieres conectar, puede dejarlo configurado directamente con:
+## Verificación
 
 ```bash
-npm run setup -- --projects-json '[{"name":"Mi proyecto","rootPath":"/ruta/absoluta/al/proyecto"}]'
-```
-
-## Tests E2E
-
-```bash
+npm run test:unit
+npm run test:skill
 npm run test:e2e
+npm run build
 ```
 
-La suite E2E usa Playwright con un workspace aislado en `.e2e/` y no depende de proyectos locales reales del usuario.
+La suite E2E usa un workspace aislado en `.e2e/` y no depende de los proyectos locales reales del usuario.
 
-Cobertura actual:
-- carga del proyecto y cierre de sidebars
-- creación y edición de historias
-- creación rápida desde el board
-- validaciones agénticas de bloqueo y readiness
-- checklists `ready` y `done`
-- filtros y búsqueda
-- creación de épicas
+## Documentación
 
-## Contrato de trabajo
-
-Las features relevantes por volumen de código o por impacto funcional deben venir acompañadas de pruebas end-to-end o de la ampliación de la suite existente.
-
-En este proyecto, el criterio por defecto es:
-- si una feature cambia flujos principales de usuario, debe quedar cubierta por Playwright
-- si una feature modifica creación, edición, movimiento o validación de historias/épicas, debe añadir o actualizar tests E2E
-- no se da por cerrada una feature relevante si `npm run test:e2e` no pasa
-
-## Configuración de proyectos
-
-Edita `config/projects.json`:
-
-```json
-[
-  {
-    "id": "mi-proyecto",
-    "name": "Mi proyecto",
-    "rootPath": "/ruta/absoluta/al/proyecto",
-    "docsPath": "docs/kanban"
-  }
-]
-```
-
-Para distribución, usa [config/projects.example.json](config/projects.example.json) como plantilla y no publiques rutas locales reales.
-
-## Skill Para Agentes
-
-La skill distribuible y normativa para que cualquier agente entienda cómo operar con este Kanban está en:
-
-[skills/local-kanban-agent/SKILL.md](skills/local-kanban-agent/SKILL.md)
-
-La skill específica para instalar el repositorio desde Git y dejarlo listo está en:
-
-[skills/local-kanban-installer/SKILL.md](skills/local-kanban-installer/SKILL.md)
-
-Uso previsto:
-- el agente trabaja sobre los `.md` como fuente de verdad
-- la UI del Kanban se usa como espejo visual para humanos
-- la skill es el unico punto de consulta para semantica y politica operativa
-- cualquier repo externo debe tener `AGENTS.md` en su raiz importando esta skill antes de que un agente empiece a trabajar
-
-## Formato recomendado
-
-Revisa [docs/PROJECT_KANBAN_SETUP.md](docs/PROJECT_KANBAN_SETUP.md), la plantilla [docs/AGENTS_WORK_CONTRACT_TEMPLATE.md](docs/AGENTS_WORK_CONTRACT_TEMPLATE.md), la skill de [skills/local-kanban-agent/SKILL.md](skills/local-kanban-agent/SKILL.md) y los ejemplos de [examples/kanban](examples/kanban).
+- [Instalación y setup](docs/INSTALLATION_AND_SETUP.md)
+- [Preparar un proyecto consumidor](docs/PROJECT_KANBAN_SETUP.md)
+- [Plantilla de contrato para AGENTS.md](docs/AGENTS_WORK_CONTRACT_TEMPLATE.md)
+- [Skill canónica](skills/local-kanban/SKILL.md)
+- [Documento de mejoras técnicas](docs/AGENTIC_KANBAN_TECHNICAL_IMPROVEMENTS.md)

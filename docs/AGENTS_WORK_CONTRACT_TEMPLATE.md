@@ -1,24 +1,19 @@
-# Agent Work Contract Template
+# Plantilla de contrato para AGENTS.md
 
-Usa este contenido como base para `TU_PROYECTO/AGENTS.md`.
-
-Sustituye `KANBAN_ROOT` por la ruta absoluta real al repositorio `Local Kanban`.
+`local-kanban init` añade esta cláusula de forma idempotente al `AGENTS.md` del proyecto consumidor. Si necesitas incorporarla manualmente, conserva el resto de instrucciones existentes.
 
 ```md
-# Agent Work Contract
+<!-- local-kanban-contract -->
+## Local Kanban
 
-Este repositorio trabaja bajo el contrato operativo definido por Local Kanban.
-
-Referencia normativa obligatoria:
-- `KANBAN_ROOT/skills/local-kanban-agent/SKILL.md`
-
-Importacion de reglas:
-- Todas las reglas, obligaciones, restricciones, politicas de ejecucion y criterios de actualizacion definidos en `KANBAN_ROOT/skills/local-kanban-agent/SKILL.md` quedan importados por referencia y forman parte de este contrato de trabajo sin excepciones.
-- Si este archivo entra en conflicto con esa skill, prevalece la skill de Local Kanban.
-- Ningun agente puede empezar trabajo tecnico, crear historias, mover estados ni cerrar tareas sin cumplir antes ese contrato.
-- Mantener el Kanban actualizado durante la ejecucion real del trabajo es obligatorio, no opcional.
-- El orquestador solo orquesta: lanza especialistas, aporta contexto minimo suficiente, monitoriza y ayuda a desbloquear. No ejecuta historias delegables salvo orden explicita del usuario.
-- El especialista ejecuta la historia asignada end to end con el contexto recibido, la valida y la deja cerrada o bloqueada con causa concreta, evidencia y siguiente accion necesaria.
+- Invocar `$local-kanban` para planificar, reclamar, ejecutar y cerrar trabajo agéntico.
+- Seguir la metodología y los comandos que anuncie la skill instalada; consultar `local-kanban --help` antes de operar.
+- Mutar el Kanban únicamente mediante `$local-kanban`. No editar directamente `docs/kanban`, `.local-kanban`, SQLite, el registro central ni llamar a HTTP como atajo.
+- Reservar la edición manual de Markdown para recuperación o mantenimiento excepcional autorizado por el humano; reconciliar y validar después.
+- El orquestador delega trabajo elegible, controla concurrencia, integra y es el único rol que marca historias como `done`.
+- El especialista trabaja solo sobre la historia reclamada, respeta scope y lease, valida el resultado y entrega en `verifying` o `waiting` con un bloqueo estructurado.
+- No ampliar scope silenciosamente, inventar estados ni cerrar sin evidencia vigente ligada al resultado integrado.
+- Mantener el contexto mínimo suficiente para reanudar: objetivo, gates, restricciones, progreso, validación, trabajo restante y siguiente acción.
 ```
 
-Si el repositorio ya tiene un `AGENTS.md`, no lo reemplaces entero. Inserta estas clausulas y conserva las reglas adicionales del propio repositorio, siempre que no contradigan el contrato de `Local Kanban`.
+Las reglas específicas del proyecto continúan aplicándose. Si parecen incompatibles con la metodología, el agente debe detener la mutación y solicitar una decisión en lugar de elegir una regla silenciosamente.

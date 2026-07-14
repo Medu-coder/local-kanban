@@ -101,6 +101,7 @@ test("el bootstrap acepta proyectos guiados por parametro y deja la configuracio
 
     expect(configured).toEqual([
       {
+        schema_version: 1,
         id: "proyecto-demo",
         name: "Proyecto Demo",
         rootPath: "/tmp/proyecto-demo",

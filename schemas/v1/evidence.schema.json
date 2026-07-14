@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local-kanban.dev/schemas/v1/evidence.schema.json",
+  "title": "Local Kanban evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "story_id", "attempt_id", "commit", "summary", "recorded_at", "actor"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$" },
+    "type": {
+      "enum": [
+        "test",
+        "build",
+        "lint",
+        "screenshot",
+        "api_assertion",
+        "benchmark",
+        "security_scan",
+        "review",
+        "human_approval"
+      ]
+    },
+    "story_id": { "type": "string", "pattern": "^STO-[A-Za-z0-9][A-Za-z0-9-]{0,63}$" },
+    "criterion_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+    "attempt_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{7,64}$" },
+    "command": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "exit_code": { "type": "integer" },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "artifact": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "recorded_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+    },
+    "actor": { "type": "string", "minLength": 1, "maxLength": 200 }
+  }
+}

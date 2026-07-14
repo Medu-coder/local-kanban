@@ -98,7 +98,7 @@ function normalizeProject(project, index) {
     throw new Error(`El proyecto ${index + 1} debe usar rootPath absoluto.`);
   }
 
-  return { id, name, rootPath, docsPath };
+  return { schema_version: 1, id, name, rootPath, docsPath };
 }
 
 async function applyProjectsArg() {
@@ -163,6 +163,7 @@ async function promptProject(rl, index) {
   const docsPath = await promptNonEmpty(rl, "Ruta de docs Kanban [docs/kanban]: ", "docs/kanban");
 
   return {
+    schema_version: 1,
     id,
     name,
     rootPath,
