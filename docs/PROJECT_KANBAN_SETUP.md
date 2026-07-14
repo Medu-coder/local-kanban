@@ -113,9 +113,13 @@ Después:
 ```bash
 local-kanban validate
 local-kanban doctor
+local-kanban reconcile --json
 ```
 
-Una edición válida y no conflictiva puede reconciliarse. Una edición obsoleta, inválida o concurrente debe quedar en cuarentena; nunca se fuerza sobrescribiendo SQLite.
+Una edición válida y no conflictiva puede reconciliarse. Una edición obsoleta, inválida,
+concurrente o desaparecida queda en cuarentena con causa, impacto y salida concreta. Solo
+`revision_divergence` admite aceptar el Markdown actual, siempre con revisión humana y
+`--reason`; nunca se fuerza sobrescribiendo SQLite.
 
 ## Operación humana útil
 

@@ -17,6 +17,7 @@ Coordinar trabajo de desarrollo agéntico manteniendo el Kanban como contrato op
 6. No cerrar sin criterios, subtareas, validación y evidencia vigentes.
 7. Mantener trazabilidad suficiente para reanudar sin consultar el chat anterior.
 8. Reservar la edición manual de Markdown para recuperación o mantenimiento excepcional; reconciliarla antes de continuar.
+9. No tolerar degradaciones silenciosas: todo warning o fallo debe conservar causa, impacto, acción, comando y verificación. Un `fail` bloquea ejecución; un warning declara qué garantía se reduce.
 
 Antes de operar, ejecutar `local-kanban --help` y usar únicamente los subcomandos que anuncie la versión instalada. Si la CLI no está disponible, resolver la fuente de esta skill con `realpath ~/.agents/skills/local-kanban`, ejecutar `npm link` desde la raíz de ese checkout y repetir el preflight. Si la reparación falla, detener la mutación y reportar el problema. No sustituirla por edición directa de Markdown, SQLite o llamadas HTTP improvisadas.
 
@@ -54,22 +55,25 @@ local-kanban worktree STO-... --attempt-id ID --fencing-token N --json
 local-kanban checkpoint STO-... --attempt-id ID --fencing-token N --summary "..." --json
 local-kanban block STO-... --attempt-id ID --fencing-token N --type TYPE \
   --description "..." --owner "..." --action "..." --resume-condition "..." --json
-local-kanban resolve STO-... --attempt-id ID --fencing-token N --block-id ID --json
+local-kanban resolve STO-... --attempt-id ID --fencing-token N --block-id ID \
+  --resolution "Qué cambió" --json
 local-kanban check STO-... --attempt-id ID --fencing-token N --subtask ID --json
 local-kanban check STO-... --attempt-id ID --fencing-token N --criterion ID --json
 local-kanban validate STO-... --attempt-id ID --fencing-token N --json
 local-kanban complete STO-... --attempt-id ID --fencing-token N --role orchestrator --json
 local-kanban worktree-remove STO-... --attempt-id ID --delete-branch --json
-local-kanban release STO-... --attempt-id ID --fencing-token N --outcome released --json
+local-kanban release STO-... --attempt-id ID --fencing-token N --outcome released \
+  --summary "Estado" --next-action "Cómo reanudar" --json
+local-kanban reconcile --json
 ```
 
-Crear trabajo nuevo mediante `create-epic` y `create-story`; no generar sus Markdown manualmente. Conservar el `attemptId` y `fencingToken` devueltos por `claim`; toda mutación posterior de ejecución los exige y renueva el lease. No inventarlos ni reutilizarlos en otra historia. Usar `show` para regenerar la cápsula tras resume. Marcar únicamente trabajo realmente terminado con `check`; repetirlo es seguro y no desmarca. Resolver un bloqueo con `resolve` antes de continuar y usar `release` para handoff, abandono o recuperación explícita. `validate` sin `STORY_ID` valida globalmente los documentos del proyecto; con `STORY_ID` ejecuta los comandos declarados por la historia, registra evidencia durable vinculada al commit y al intento, y entrega en `testing/verifying`. Solo el orquestador usa `complete`, después de integrar: el comando vuelve a validar sobre el checkout principal, registra evidencia del commit integrado y después cierra. Retirar el worktree limpio con `worktree-remove` tras el cierre.
+Crear trabajo nuevo mediante `create-epic` y `create-story`; no generar sus Markdown manualmente. Conservar el `attemptId` y `fencingToken` devueltos por `claim`; toda mutación posterior de ejecución los exige y renueva el lease. No inventarlos ni reutilizarlos en otra historia. Usar `show` para regenerar la cápsula tras resume. Marcar únicamente trabajo realmente terminado con `check`; repetirlo es seguro y no desmarca. Resolver un bloqueo con `resolve` explicando la resolución. `release` exige checkpoint vigente o handoff con resumen y siguiente acción. `validate` sin `STORY_ID` valida globalmente los documentos del proyecto; con `STORY_ID` ejecuta los comandos declarados por la historia, registra evidencia durable vinculada al commit y al intento, y entrega en `testing/verifying`; un fallo también queda auditado con la siguiente acción. Solo el orquestador usa `complete`, después de integrar: el comando vuelve a validar sobre el checkout principal, registra evidencia del commit integrado y después cierra. Retirar el worktree limpio con `worktree-remove` tras el cierre.
 
 ## Flujo del orquestador
 
-1. Reconciliar repositorio, estado durable y runtime antes de asignar trabajo.
+1. Ejecutar `doctor --json` y `reconcile --json` antes de asignar trabajo. `next` y `claim` fallan cerrados si el runtime conserva una degradación bloqueante.
 2. Resolver resultados, leases expirados, bloqueos y conflictos pendientes.
-3. Consultar historias elegibles, entregas pendientes y trabajo que requiere intervención con `local-kanban next --json`. La respuesta separa `stories` para implementación, `verification` para revisión/cierre —incluidos los handoffs activos en `testing`— y `attention` para claims stale, bloqueos o intentos liberados que deben reanudarse. Seguir el `nextAction` de cada cápsula. Las colas se ordenan de forma determinista:
+3. Consultar `local-kanban next --json`. La respuesta separa `stories`, `verification`, `attention`, `active` y `deferred`; cada cola declara total, elementos devueltos y si hay más. Seguir `guidance.command` y no interpretar una cola vacía como ausencia de trabajo sin revisar el resumen. Las colas se ordenan de forma determinista:
    - `rank` ascendente;
    - prioridad `high`, `medium`, `low`;
    - mayor número de historias desbloqueadas;

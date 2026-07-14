@@ -124,8 +124,10 @@ npm run status
 curl --fail http://127.0.0.1:4010/api/health
 ```
 
-El endpoint devuelve `health: degraded` si alguna ruta registrada ya no existe. La UI sigue
-disponible, marca el proyecto afectado y permite seleccionar cualquier otro proyecto sano.
+El endpoint usa el mismo diagnóstico que la UI: devuelve `health: degraded` ante rutas
+inaccesibles, cuarentenas o cierres `done` sin gate canónico, e incluye por proyecto causa,
+impacto, siguiente acción y criterio de verificación. La UI sigue disponible en modo consulta
+y permite seleccionar cualquier otro proyecto sano.
 
 La UI no es necesaria para que los agentes operen; sirve para observación y control humano.
 El servicio escucha en `127.0.0.1:4010` por defecto. No cambies `HOST` para exponerlo
@@ -201,4 +203,26 @@ Comprueba después que la UI esté leyendo el mismo checkout de Local Kanban don
 
 ### El proyecto está degradado
 
-No corrijas SQLite o el frontmatter a ciegas. Invoca `$local-kanban`, ejecuta `local-kanban doctor` y sigue el diagnóstico. Si exige una decisión humana, conserva la entidad en cuarentena hasta resolverla.
+No corrijas SQLite o el frontmatter a ciegas. Ejecuta:
+
+```bash
+local-kanban doctor --json
+local-kanban reconcile --json
+```
+
+Cada issue explica causa, impacto, acción, comando y verificación. `invalid_document` se
+corrige y valida; `revision_divergence` puede aceptar Markdown solo tras revisar el diff y
+aportar `--reason`; `active_claim` exige resolver o liberar el intento; `pending_operation`
+exige recovery; `missing_document` exige restaurar el fichero o escalar un borrado explícito.
+No existe una resolución segura mediante edición directa de `.local-kanban/runtime.sqlite`.
+
+Para datos de prueba legacy sin valor histórico:
+
+```bash
+local-kanban migrate-legacy --validation "git diff --check" --risk standard \
+  --reason "Fixtures de prueba" --apply --json
+local-kanban validate --json
+local-kanban doctor --json
+```
+
+La migración reabre los `done` históricos en `testing`: no fabrica evidencia retrospectiva.

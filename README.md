@@ -50,6 +50,13 @@ checks accionables y métricas compactas de auditoría, operaciones, claims y bl
 Una cuarentena o corrupción hace fallar el diagnóstico; un entorno sin la skill instalada
 queda degradado con la acción de reparación, sin ocultar el resto del informe.
 
+Toda degradación usa el mismo contrato en CLI, API y UI: `severity`, `code`, `cause`,
+`impact`, `action`, `command` y `verification`. `health: degraded` devuelve exit code 2
+en `doctor`; `next` y `claim` fallan cerrados ante degradaciones bloqueantes. Para listar
+la recuperación exacta usa `local-kanban reconcile --json`. Aceptar el Markdown actual
+solo está permitido para una `revision_divergence` validada y exige entidad, `--accept-current`
+y `--reason`. Los fixtures legacy se convierten mediante `migrate-legacy`, nunca con defaults ocultos.
+
 `init` es idempotente y se encarga de:
 
 - registrar o actualizar el proyecto en el registro central;
