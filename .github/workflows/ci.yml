@@ -23,6 +23,9 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run test:unit
+      - run: npm run test:quality
+      - run: npm run eval
+      - run: npm run benchmark
       - run: npm run build
       - run: npm audit --audit-level=high
       - run: npx playwright install --with-deps chromium

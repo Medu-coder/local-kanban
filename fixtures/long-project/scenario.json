@@ -1,0 +1,10 @@
+{
+  "name": "deterministic-long-project",
+  "seed": 20260714,
+  "storyCount": 1000,
+  "dependencyStride": 5,
+  "iterations": 100,
+  "wipLimit": 20,
+  "expectedFirstStory": "STO-0001",
+  "expectedScheduledCount": 20
+}

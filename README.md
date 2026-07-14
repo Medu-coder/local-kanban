@@ -44,6 +44,12 @@ local-kanban validate
 local-kanban doctor
 ```
 
+`doctor` ejecuta validación de schemas y DAG, recovery seguro, integridad SQLite,
+permisos/rutas, Git/worktrees y enlace de la skill. Devuelve `health: healthy|degraded`,
+checks accionables y métricas compactas de auditoría, operaciones, claims y bloqueos.
+Una cuarentena o corrupción hace fallar el diagnóstico; un entorno sin la skill instalada
+queda degradado con la acción de reparación, sin ocultar el resto del informe.
+
 `init` es idempotente y se encarga de:
 
 - registrar o actualizar el proyecto en el registro central;
@@ -79,11 +85,17 @@ Las historias usan IDs `STO-*`; las épicas, `EPI-*`. Readiness, bloqueos, claim
 ```bash
 npm run test:unit
 npm run test:skill
+npm run test:quality
+npm run eval
+npm run benchmark
 npm run test:e2e
 npm run build
 ```
 
 La suite E2E usa un workspace aislado en `.e2e/` y no depende de los proyectos locales reales del usuario.
+`eval` comprueba las invariantes agénticas críticas (claims concurrentes, leases,
+checkpoint/handoff, bloqueo humano, fencing y cierre) y `benchmark` ejecuta un
+fixture reproducible de 1.000 historias. Ambos son gates de CI.
 
 ## Documentación
 

@@ -26,7 +26,10 @@
     "skill:verify": "node scripts/manage-skill.js verify",
     "check": "node scripts/check-static.js",
     "test:unit": "node --test test/*.test.js",
+    "test:quality": "node --test test/diagnostics.test.js test/evals.test.js",
     "test:skill": "node --test test/skill-management.test.js",
+    "eval": "node scripts/eval-agent-flow.js",
+    "benchmark": "node scripts/benchmark.js",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed"
   },

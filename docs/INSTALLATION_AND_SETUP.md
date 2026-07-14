@@ -74,6 +74,16 @@ local-kanban validate
 local-kanban doctor
 ```
 
+El resultado de `doctor` incluye:
+
+- `health: healthy` cuando todos los checks pasan, o `degraded` cuando existe una advertencia o fallo;
+- checks de schemas/DAG, permisos y rutas, SQLite/recovery/cuarentena, Git/worktrees y skill canónica;
+- métricas básicas de auditoría, operaciones, claims, intentos, checkpoints y bloqueos abiertos;
+- una acción concreta para cada problema detectado.
+
+`ok: false` significa que no debe continuar el flujo normal. Un warning mantiene
+`ok: true`, pero el orquestador debe resolverlo antes de depender de la capacidad afectada.
+
 Además, comprueba que:
 
 - `AGENTS.md` indica que debe invocarse `$local-kanban`;
@@ -115,6 +125,19 @@ npm run skill:verify
 ```
 
 Si la verificación del symlink falla, ejecuta `npm run skill:install` y vuelve a verificar.
+
+Antes de publicar una actualización del Kanban ejecuta también:
+
+```bash
+npm run test:quality
+npm run eval
+npm run benchmark
+```
+
+Las evaluaciones son deterministas y cubren las invariantes de coordinación. El
+benchmark usa `fixtures/long-project/scenario.json`; informa rendimiento para detectar
+regresiones, pero su gate estable valida el resultado semántico, no un umbral temporal
+dependiente de la máquina.
 
 ## Administración humana excepcional
 
