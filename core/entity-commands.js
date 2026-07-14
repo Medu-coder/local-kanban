@@ -71,7 +71,22 @@ function assertProjectMembership(entity, project, entityType) {
   }
 }
 
-function buildUpdatedEntity(current, replacement, patch) {
+function assertLifecyclePreserved(current, candidate, entityType) {
+  if (entityType !== "story") {
+    return;
+  }
+  for (const field of ["status", "epic"]) {
+    if (candidate[field] !== current[field]) {
+      throw new DomainError(
+        "transition_required",
+        `${field} debe modificarse mediante el comando de transición.`,
+        { details: { field, current: current[field] ?? null, requested: candidate[field] ?? null }, status: 409 },
+      );
+    }
+  }
+}
+
+function buildUpdatedEntity(current, replacement, patch, entityType) {
   if (replacement !== undefined && patch !== undefined) {
     throw new DomainError("command_invalid", "Usa entity o patch, pero no ambos.");
   }
@@ -91,7 +106,9 @@ function buildUpdatedEntity(current, replacement, patch) {
         });
       }
     }
-    return { ...current, ...patch, revision: current.revision + 1 };
+    const candidate = { ...current, ...patch, revision: current.revision + 1 };
+    assertLifecyclePreserved(current, candidate, entityType);
+    return candidate;
   }
 
   if (!replacement || typeof replacement !== "object" || Array.isArray(replacement)) {
@@ -111,7 +128,9 @@ function buildUpdatedEntity(current, replacement, patch) {
       status: 409,
     });
   }
-  return { ...replacement, revision: current.revision + 1 };
+  const candidate = { ...replacement, revision: current.revision + 1 };
+  assertLifecyclePreserved(current, candidate, entityType);
+  return candidate;
 }
 
 async function executeCanonical(options, intent, callback) {
@@ -177,6 +196,13 @@ async function createEntityCommand(entityType, options) {
 
   return executeCanonical(options, intent, async ({ project, paths, runtime, fingerprint, idempotencyKey }) => {
     assertProjectMembership(entity, project, entityType);
+    if (entityType === "story" && entity.status !== "backlog") {
+      throw new DomainError(
+        "transition_required",
+        "Una historia nueva debe crearse en backlog y avanzar mediante transiciones.",
+        { details: { status: entity.status }, status: 409 },
+      );
+    }
     if (entity.revision !== 1) {
       throw new DomainError("revision_conflict", "Una entidad nueva debe comenzar en revisión 1.", {
         details: { target: entity.revision },
@@ -237,7 +263,7 @@ async function updateEntityCommand(entityType, options) {
         status: 409,
       });
     }
-    const nextEntity = buildUpdatedEntity(current.entity, replacement, options.patch);
+    const nextEntity = buildUpdatedEntity(current.entity, replacement, options.patch, entityType);
     (entityType === "story" ? validateStory : validateEpic)(nextEntity);
     const result = createResult(entityType, nextEntity);
     return persistEntity({

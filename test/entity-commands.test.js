@@ -192,6 +192,39 @@ test("update story acepta reemplazo completo pero no cambia identidad ni body", 
   }
 });
 
+test("CRUD story no permite saltarse el comando de transición", async () => {
+  const fixture = await createProjectFixture();
+  try {
+    await assert.rejects(
+      createStoryCommand({
+        project: fixture.project,
+        story: createStory({ status: "developing" }),
+        expectedRevision: 0,
+        idempotencyKey: "create-developing",
+        actor,
+      }),
+      (error) => error.code === "transition_required" && error.status === 409,
+    );
+    await seedStory(fixture);
+    for (const [field, value] of [["status", "developing"], ["epic", "EPI-001"]]) {
+      await assert.rejects(
+        updateStoryCommand({
+          project: fixture.project,
+          storyId: "STO-001",
+          patch: { [field]: value },
+          expectedRevision: 1,
+          idempotencyKey: `lifecycle-${field}`,
+          actor,
+        }),
+        (error) => error.code === "transition_required" && error.details.field === field,
+      );
+    }
+    assert.equal((await readCanonicalStory(fixture.project, "STO-001")).entity.revision, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("update epic incrementa revisión y preserva el body", async () => {
   const fixture = await createProjectFixture();
   try {
