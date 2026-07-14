@@ -68,7 +68,7 @@ Crear trabajo nuevo mediante `create-epic` y `create-story`; no generar sus Mark
 
 1. Reconciliar repositorio, estado durable y runtime antes de asignar trabajo.
 2. Resolver resultados, leases expirados, bloqueos y conflictos pendientes.
-3. Consultar historias elegibles con `local-kanban next --json`, ordenadas de forma determinista:
+3. Consultar historias elegibles y entregas pendientes con `local-kanban next --json`. La respuesta separa `stories` para implementación y `verification` para revisión/cierre, ambas ordenadas de forma determinista:
    - `rank` ascendente;
    - prioridad `high`, `medium`, `low`;
    - mayor número de historias desbloqueadas;
@@ -90,7 +90,7 @@ No absorber trabajo delegable por conveniencia. Registrar la causa de overrides,
 5. Renovar el lease implícitamente mediante actividad normal de la interfaz. No generar heartbeats conversacionales.
 6. Ante un bloqueo real, usar `block` con tipo, evidencia, responsable, acción solicitada y condición de reanudación; tras atenderlo usar `resolve`.
 7. Marcar subtareas y criterios satisfechos con `check`, y después usar `validate STORY_ID`; no registrar manualmente evidencia ni omitir los comandos definidos.
-8. Para riesgo `standard`, entregar en `verifying` al superar los gates. Para riesgo `high`, solicitar verificación independiente antes de la entrega.
+8. Para riesgo `standard`, entregar en `verifying` al superar los gates. Para riesgo `high`, liberar el intento tras validar; el orquestador reclama la historia en `testing` con otro agente, que ejecuta `validate --evidence-type review`, libera su intento y deja la entrega disponible para el claim final del orquestador.
 9. Entregar un handoff compacto que permita al orquestador localizar cambios, pruebas, decisiones y trabajo residual. No marcar `done`.
 
 No continuar mutando después de perder el lease. No declarar éxito basándose solo en inspección cuando exista una validación ejecutable.

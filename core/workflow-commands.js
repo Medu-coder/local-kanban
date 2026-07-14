@@ -91,6 +91,15 @@ function uniqueItems(values = []) {
   return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
 }
 
+const workflowPriority = Object.freeze({ high: 0, medium: 1, low: 2 });
+
+function workflowOrder(left, right) {
+  const rank = (left.rank ?? Number.MAX_SAFE_INTEGER) - (right.rank ?? Number.MAX_SAFE_INTEGER);
+  if (rank !== 0) return rank;
+  const priority = (workflowPriority[left.priority] ?? 1) - (workflowPriority[right.priority] ?? 1);
+  return priority || left.id.localeCompare(right.id);
+}
+
 export async function createStoryWorkflow(options) {
   const { project } = await context(options);
   const id = requireText(options.storyId, "storyId");
@@ -224,6 +233,16 @@ export async function nextStoriesCommand(options = {}) {
       activeCount: held.length,
       wipLimit: held.length + limit,
     });
+    const verification = validation.stories
+      .filter((story) => story.status === "testing" && !held.includes(story.id))
+      .sort(workflowOrder)
+      .slice(0, limit)
+      .map((story) => buildOperationalCapsule({
+        story,
+        coordination: coordination.get(story.id),
+        gates: evaluateStoryGates(story, dependencyStatuses(story, validation.stories)),
+        nextAction: story.risk === "high" ? `claim ${story.id} as independent verifier` : `claim ${story.id} as orchestrator`,
+      }));
     return {
       count: selected.length,
       stories: selected.map(({ story, unlockCount, whyReady }) => ({
@@ -235,6 +254,8 @@ export async function nextStoriesCommand(options = {}) {
         }),
         scheduling: { unlockCount, whyReady },
       })),
+      verificationCount: verification.length,
+      verification,
     };
   } finally {
     runtime.close();
@@ -245,8 +266,8 @@ export async function claimStoryWorkflow(options) {
   const { project, paths, story } = await storyContext(options);
   const actor = requireText(options.actor ?? options.agentId ?? "codex", "actor");
   const agentId = requireText(options.agentId ?? actor, "agentId");
-  if (story.status !== "backlog" && story.status !== "developing") {
-    throw new DomainError("claim_status_invalid", "Solo se puede reclamar una historia en backlog o developing.", {
+  if (!["backlog", "developing", "testing"].includes(story.status)) {
+    throw new DomainError("claim_status_invalid", "Solo se puede reclamar una historia ejecutable o en verificación.", {
       details: { storyId: story.id, status: story.status },
       status: 409,
     });
@@ -285,7 +306,9 @@ export async function claimStoryWorkflow(options) {
         story: currentStory,
         coordination: currentRuntime.getCoordinationState(story.id),
         gates: await currentGates(project, currentStory),
-        nextAction: "execute",
+        nextAction: currentStory.status === "testing"
+          ? (currentStory.risk === "high" ? "independent_review" : "integrated_verification")
+          : "execute",
       });
     } finally {
       currentRuntime.close();
@@ -374,7 +397,7 @@ export async function checkStoryWorkflow(options) {
   const { project, paths, story } = await storyContext(options);
   const runtime = openRuntime(paths.rootPath);
   try {
-    runtime.verifyClaim(envelope);
+    runtime.renewClaim(envelope);
   } finally {
     runtime.close();
   }
@@ -413,7 +436,7 @@ export async function prepareStoryWorktreeWorkflow(options) {
   const { paths } = await storyContext(options);
   const runtime = openRuntime(paths.rootPath);
   try {
-    runtime.verifyClaim(envelope);
+    runtime.renewClaim(envelope);
   } finally {
     runtime.close();
   }
@@ -516,7 +539,7 @@ export async function validateStoryWorkflow(options) {
   }
   const runtime = openRuntime(paths.rootPath);
   try {
-    runtime.verifyClaim(envelope);
+    runtime.renewClaim(envelope);
   } finally {
     runtime.close();
   }

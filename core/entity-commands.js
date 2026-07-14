@@ -10,6 +10,7 @@ import { resolveProjectPaths } from "./paths.js";
 import { openRuntime } from "./runtime.js";
 import { validateEpic, validateProject, validateStory } from "./schema.js";
 import { recoverPendingOperations } from "./story-repository.js";
+import { validateProjectDocuments, validateStoryGraph } from "./commands.js";
 
 const IMMUTABLE_FIELDS = Object.freeze(["schema_version", "revision", "id", "type", "project"]);
 
@@ -178,6 +179,38 @@ function createResult(entityType, entity) {
   };
 }
 
+async function assertStoryRelationships(project, candidate) {
+  const validation = await validateProjectDocuments(project);
+  if (!validation.ok) {
+    throw new DomainError("project_invalid", "El proyecto debe ser válido antes de mutar relaciones.", {
+      details: { invalid: validation.invalid },
+      status: 409,
+    });
+  }
+  if (candidate.epic && !validation.epics.some((epic) => epic.id === candidate.epic)) {
+    throw new DomainError("orphan_epic", "La historia referencia una épica inexistente.", {
+      details: { storyId: candidate.id, epicId: candidate.epic },
+      status: 409,
+    });
+  }
+  const graph = validateStoryGraph([
+    ...validation.stories.filter((story) => story.id !== candidate.id),
+    candidate,
+  ]);
+  if (graph.orphaned.length > 0) {
+    throw new DomainError("orphan_dependency", "La historia referencia dependencias inexistentes.", {
+      details: { orphaned: graph.orphaned },
+      status: 409,
+    });
+  }
+  if (graph.cycles.length > 0) {
+    throw new DomainError("dependency_cycle", "La mutación introduce un ciclo hard.", {
+      details: { cycles: graph.cycles },
+      status: 409,
+    });
+  }
+}
+
 async function createEntityCommand(entityType, options) {
   assertCreateRevision(options);
   if (options.body !== undefined && typeof options.body !== "string") {
@@ -208,6 +241,9 @@ async function createEntityCommand(entityType, options) {
         details: { target: entity.revision },
         status: 409,
       });
+    }
+    if (entityType === "story") {
+      await assertStoryRelationships(project, entity);
     }
     const current = entityType === "story"
       ? await readCanonicalStory(paths, entity.id, { allowMissing: true })
@@ -265,6 +301,9 @@ async function updateEntityCommand(entityType, options) {
     }
     const nextEntity = buildUpdatedEntity(current.entity, replacement, options.patch, entityType);
     (entityType === "story" ? validateStory : validateEpic)(nextEntity);
+    if (entityType === "story") {
+      await assertStoryRelationships(project, nextEntity);
+    }
     const result = createResult(entityType, nextEntity);
     return persistEntity({
       project: paths,

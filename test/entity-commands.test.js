@@ -511,3 +511,53 @@ test("un fallo posterior al rename deja el journal recuperable también para CRU
     await fixture.cleanup();
   }
 });
+
+test("CRUD rechaza épicas y dependencias huérfanas y ciclos antes de persistir", async () => {
+  const fixture = await createProjectFixture();
+  try {
+    await assert.rejects(
+      createStoryCommand({
+        project: fixture.project,
+        story: createStory({ epic: "EPI-MISSING" }),
+        expectedRevision: 0,
+        idempotencyKey: "orphan-epic-create",
+        actor,
+      }),
+      (error) => error.code === "orphan_epic",
+    );
+    await assert.rejects(
+      createStoryCommand({
+        project: fixture.project,
+        story: createStory({ dependencies: [{ story_id: "STO-MISSING", type: "hard" }] }),
+        expectedRevision: 0,
+        idempotencyKey: "orphan-dependency-create",
+        actor,
+      }),
+      (error) => error.code === "orphan_dependency",
+    );
+    await seedStory(fixture, { id: "STO-A" });
+    await seedStory(fixture, { id: "STO-B" });
+    await updateStoryCommand({
+      project: fixture.project,
+      storyId: "STO-A",
+      expectedRevision: 1,
+      patch: { dependencies: [{ story_id: "STO-B", type: "hard" }] },
+      idempotencyKey: "a-depends-b",
+      actor,
+    });
+    await assert.rejects(
+      updateStoryCommand({
+        project: fixture.project,
+        storyId: "STO-B",
+        expectedRevision: 1,
+        patch: { dependencies: [{ story_id: "STO-A", type: "hard" }] },
+        idempotencyKey: "b-depends-a",
+        actor,
+      }),
+      (error) => error.code === "dependency_cycle",
+    );
+    assert.deepEqual((await readCanonicalStory(fixture.project, "STO-B")).entity.dependencies, []);
+  } finally {
+    await fixture.cleanup();
+  }
+});

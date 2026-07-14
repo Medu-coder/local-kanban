@@ -43,7 +43,7 @@ function commandFingerprint(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-function validateGraph(stories) {
+export function validateStoryGraph(stories) {
   const byId = new Map(stories.map((story) => [story.id, story]));
   const orphaned = [];
   for (const story of stories) {
@@ -110,7 +110,7 @@ export async function validateProjectDocuments(projectInput) {
     }
   }
 
-  const graph = validateGraph(valid.stories);
+  const graph = validateStoryGraph(valid.stories);
   const epicIds = new Set(valid.epics.map((epic) => epic.id));
   for (const epic of valid.epics) {
     if (epic.project !== project.id) {

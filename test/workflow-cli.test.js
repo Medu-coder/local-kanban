@@ -337,3 +337,72 @@ test("CLI cubre planificación completa sin editar Markdown manualmente", async 
     await fs.rm(rootPath, { recursive: true, force: true });
   }
 });
+
+test("CLI completa riesgo high con handoff y review de intento independiente", async () => {
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-high-review-"));
+  const configPath = path.join(rootPath, ".config", "projects.json");
+  await git(rootPath, ["init", "-q"]);
+  try {
+    await fs.writeFile(path.join(rootPath, "README.md"), "# High risk\n", "utf8");
+    await runCli(["init", "--id", "high-project", "--name", "High project", "--json"], rootPath, configPath);
+    await runCli([
+      "create-story", "STO-HIGH", "--title", "Cambio sensible", "--objective", "Validar review independiente",
+      "--acceptance", "Cambio validado", "--validation", "node -e \"process.exit(0)\"",
+      "--context", "README.md", "--subtasks", "Implementar", "--risk", "high", "--json",
+    ], rootPath, configPath);
+    await git(rootPath, ["add", "."]);
+    await git(rootPath, ["commit", "-qm", "plan high risk"]);
+
+    const implementer = JSON.parse((await runCli([
+      "claim", "STO-HIGH", "--agent", "implementer", "--json",
+    ], rootPath, configPath)).stdout);
+    const implEnvelope = [
+      "--attempt-id", implementer.execution.attemptId,
+      "--fencing-token", String(implementer.execution.fencingToken),
+      "--actor", "implementer", "--json",
+    ];
+    await runCli(["check", "STO-HIGH", ...implEnvelope, "--subtask", "implementar"], rootPath, configPath);
+    await runCli(["check", "STO-HIGH", ...implEnvelope, "--criterion", "cambio-validado"], rootPath, configPath);
+    await runCli(["validate", "STO-HIGH", ...implEnvelope], rootPath, configPath);
+    await runCli(["release", "STO-HIGH", ...implEnvelope, "--outcome", "released"], rootPath, configPath);
+
+    const queue = JSON.parse((await runCli(["next", "--json"], rootPath, configPath)).stdout);
+    assert.equal(queue.count, 0);
+    assert.equal(queue.verificationCount, 1);
+    assert.equal(queue.verification[0].nextAction, "claim STO-HIGH as independent verifier");
+
+    const reviewer = JSON.parse((await runCli([
+      "claim", "STO-HIGH", "--agent", "independent-reviewer", "--json",
+    ], rootPath, configPath)).stdout);
+    assert.equal(reviewer.story.status, "testing");
+    const reviewEnvelope = [
+      "--attempt-id", reviewer.execution.attemptId,
+      "--fencing-token", String(reviewer.execution.fencingToken),
+      "--actor", "independent-reviewer", "--json",
+    ];
+    await runCli([
+      "validate", "STO-HIGH", ...reviewEnvelope, "--evidence-type", "review",
+      "--summary", "Review independiente superada",
+    ], rootPath, configPath);
+    await runCli(["release", "STO-HIGH", ...reviewEnvelope, "--outcome", "released"], rootPath, configPath);
+
+    const orchestrator = JSON.parse((await runCli([
+      "claim", "STO-HIGH", "--agent", "orchestrator", "--json",
+    ], rootPath, configPath)).stdout);
+    const completed = JSON.parse((await runCli([
+      "complete", "STO-HIGH",
+      "--attempt-id", orchestrator.execution.attemptId,
+      "--fencing-token", String(orchestrator.execution.fencingToken),
+      "--actor", "orchestrator", "--role", "orchestrator", "--json",
+    ], rootPath, configPath)).stdout);
+    assert.equal(completed.status, "done");
+    assert.equal(completed.gates.hasIndependentReview, true);
+    const stored = (await readStory({
+      schema_version: 1, id: "high-project", name: "High project", rootPath, docsPath: "docs/kanban",
+    }, "STO-HIGH")).story;
+    assert.equal(stored.evidence.filter((item) => item.type === "review").length, 1);
+    assert.equal(new Set(stored.evidence.map((item) => item.attempt_id)).size, 3);
+  } finally {
+    await fs.rm(rootPath, { recursive: true, force: true });
+  }
+});
