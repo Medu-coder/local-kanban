@@ -83,6 +83,7 @@ export function StoryDetail({
   onOperationalChange,
 }) {
   const [timeline, setTimeline] = useState(null);
+  const [timelineRevision, setTimelineRevision] = useState(0);
   const [operationalError, setOperationalError] = useState("");
 
   useEffect(() => {
@@ -94,7 +95,7 @@ export function StoryDetail({
         .catch((error) => { if (active) setOperationalError(error.message); });
     }
     return () => { active = false; };
-  }, [story?.id, story?.projectId, story?.revision]);
+  }, [story?.id, story?.projectId, story?.revision, timelineRevision]);
 
   if (!story) {
     return null;
@@ -194,6 +195,7 @@ export function StoryDetail({
                           fencingToken: story.coordination.claim.fencingToken,
                         });
                         await onOperationalChange?.();
+                        setTimelineRevision((revision) => revision + 1);
                       } catch (error) { setOperationalError(error.message); }
                     }}
                   >Resolver</button>
@@ -217,6 +219,7 @@ export function StoryDetail({
                     outcome: "abandoned",
                   });
                   await onOperationalChange?.();
+                  setTimelineRevision((revision) => revision + 1);
                 } catch (error) { setOperationalError(error.message); }
               }}
             >Liberar claim</button>

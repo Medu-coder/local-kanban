@@ -637,7 +637,10 @@ export default function App() {
             [criteriaField]: nextCriteria,
             [progressField]: nextProgress,
             ...(criteriaType === "ready"
-              ? { isReadyForDeveloping: !current.isBlocked && nextProgress.isComplete }
+              ? {
+                  isReadyForDeveloping:
+                    !current.quarantine && !current.isBlocked && nextProgress.isComplete,
+                }
               : { isDoneValidated: nextProgress.isComplete }),
           }
         : current

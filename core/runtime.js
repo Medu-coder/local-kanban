@@ -989,10 +989,10 @@ export class RuntimeStore {
       ? this.db
           .prepare(
             `SELECT * FROM audit_events WHERE entity_type = 'story' AND entity_id = ?
-             ORDER BY created_at, id LIMIT ?`,
+             ORDER BY created_at, rowid LIMIT ?`,
           )
           .all(options.storyId, limit)
-      : this.db.prepare("SELECT * FROM audit_events ORDER BY created_at, id LIMIT ?").all(limit);
+      : this.db.prepare("SELECT * FROM audit_events ORDER BY created_at, rowid LIMIT ?").all(limit);
     return rows.map((row) => ({
       id: row.id,
       operationId: row.operation_id,
@@ -1028,7 +1028,23 @@ export class RuntimeStore {
       const safeAdvance = state && !state.pending_operation_id && revision === state.revision + 1;
 
       if (unchanged) {
-        return { status: "unchanged", entityType, entityId, revision };
+        const resolved = this.db
+          .prepare("DELETE FROM entity_quarantine WHERE entity_type = ? AND entity_id = ?")
+          .run(entityType, entityId).changes > 0;
+        if (resolved) {
+          this.appendAudit(
+            {
+              eventType: "document_quarantine_resolved",
+              entityType,
+              entityId,
+              actor: input.actor ?? "watcher",
+              payload: { revision, contentHash },
+              createdAt: timestamp,
+            },
+            false,
+          );
+        }
+        return { status: "unchanged", entityType, entityId, revision, quarantineResolved: resolved };
       }
 
       if ((safeBootstrap || safeAdvance) && !heldClaim) {

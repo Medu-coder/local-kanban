@@ -67,7 +67,7 @@ test("si los criterios vienen como strings legacy, la UI los migra visualmente a
   await expect(page.getByTestId("story-detail-panel")).toContainText("manual");
 });
 
-test("si el agente completa dependencias y subtareas en markdown, la validación visual se actualiza", async ({ page }) => {
+test("una edición legacy actualiza el checklist visual sin certificar una historia en cuarentena", async ({ page }) => {
   await updateMarkdownFrontmatter(getStoryPath("STO-001"), (data) => ({
     ...data,
     subtasks: [
@@ -85,7 +85,22 @@ test("si el agente completa dependencias y subtareas en markdown, la validación
   await page.reload();
   await page.getByTestId("story-card-STO-001").click();
 
-  await expect(page.getByTestId("story-detail-panel")).toContainText("Done validado");
-  await expect(page.getByTestId("story-card-STO-001")).toContainText("Done validado");
+  await expect(page.getByTestId("story-detail-panel")).toContainText("Done checklist");
+  await expect(page.getByTestId("story-detail-panel")).toContainText("1/1");
+  await expect(page.getByTestId("story-card-STO-001")).toContainText("Cuarentena");
+  await expect(page.getByTestId("story-card-STO-001")).not.toContainText("Done validado");
 });
 
+test("una historia en cuarentena nunca se presenta como ready", async ({ page }) => {
+  await updateMarkdownFrontmatter(getStoryPath("STO-001"), (data) => ({
+    ...data,
+    schema_version: 999,
+  }));
+
+  await page.reload();
+  const card = page.getByTestId("story-card-STO-001");
+  await expect(card).toContainText("Cuarentena");
+  await expect(card).not.toContainText("Ready");
+  await card.click();
+  await expect(page.getByTestId("story-quarantine")).toBeVisible();
+});

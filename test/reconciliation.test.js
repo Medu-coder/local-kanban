@@ -75,3 +75,31 @@ test("un documento inválido queda aislado sin impedir importar los demás", asy
     await fixture.cleanup();
   }
 });
+
+test("restaurar exactamente un documento válido limpia su cuarentena", async () => {
+  const fixture = await createProjectFixture();
+  const storyPath = path.join(fixture.rootPath, "docs/kanban/stories/STO-001.md");
+  const validContent = serializeStory(createStory());
+  await fs.writeFile(storyPath, validContent, "utf8");
+  const runtime = openRuntime(fixture.rootPath);
+  try {
+    await reconcileProjectDocuments(fixture.project, runtime);
+    await fs.writeFile(storyPath, "---\nschema_version: 999\nid: STO-001\n---\n", "utf8");
+    await reconcileProjectDocuments(fixture.project, runtime);
+    assert.equal(runtime.listQuarantines().length, 1);
+
+    await fs.writeFile(storyPath, validContent, "utf8");
+    const result = await reconcileProjectDocuments(fixture.project, runtime);
+
+    assert.equal(result[0].status, "unchanged");
+    assert.equal(result[0].quarantineResolved, true);
+    assert.deepEqual(runtime.listQuarantines(), []);
+    assert.equal(
+      runtime.listAuditEvents({ storyId: "STO-001" }).at(-1).eventType,
+      "document_quarantine_resolved",
+    );
+  } finally {
+    runtime.close();
+    await fixture.cleanup();
+  }
+});

@@ -307,8 +307,9 @@ function enrichStories(project, stories) {
       readyCriteriaProgress,
       doneCriteriaProgress,
       isBlocked,
-      isReadyForDeveloping: !isBlocked && readyCriteriaProgress.isComplete,
-      isDoneValidated: !isBlocked && doneCriteriaProgress.isComplete && canonicalDoneValidated,
+      isReadyForDeveloping: !story.quarantine && !isBlocked && readyCriteriaProgress.isComplete,
+      isDoneValidated:
+        !story.quarantine && !isBlocked && doneCriteriaProgress.isComplete && canonicalDoneValidated,
     };
   });
 }
