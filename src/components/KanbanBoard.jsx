@@ -197,10 +197,14 @@ export function KanbanBoard({
               {statuses.map((status) => (
                 <div
                   key={`${lane.id}-${status.id}`}
-                  className={`board-column epic-lane__column ${draggedStory ? "is-drop-ready" : ""}`}
+                  className={`board-column epic-lane__column ${draggedStory && status.id === "backlog" ? "is-drop-ready" : ""}`}
                   data-testid={`dropzone-${lane.id}-${status.id}`}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={() => onDropStory(status.id, lane.id)}
+                  onDragOver={(event) => {
+                    if (status.id === "backlog") event.preventDefault();
+                  }}
+                  onDrop={() => {
+                    if (status.id === "backlog") onDropStory(status.id, lane.id);
+                  }}
                 >
                   <div className="epic-lane__column-inner">
                     {status.id === "backlog" ? (
@@ -224,6 +228,11 @@ export function KanbanBoard({
                             onSelect={onSelectStory}
                             onDragStart={onDragStart}
                             onDragEnd={onDragEnd}
+                            canDrag={
+                              story.status === "backlog" &&
+                              !story.quarantine &&
+                              !story.coordination?.claim
+                            }
                           />
                         ))}
                       </div>

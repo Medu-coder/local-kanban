@@ -2,8 +2,9 @@ import { expect, test } from "@playwright/test";
 import fs from "node:fs/promises";
 import matter from "gray-matter";
 
+import { openRuntime } from "../../core/runtime.js";
 import { serializeStory } from "../../core/story-repository.js";
-import { getEpicPath, getStoryPath, resetFixtureWorkspace } from "../helpers/fixture.js";
+import { getEpicPath, getStoryPath, projectRoot, resetFixtureWorkspace } from "../helpers/fixture.js";
 
 function canonicalStory(overrides = {}) {
   return {
@@ -53,7 +54,7 @@ test.beforeEach(async () => {
   );
 });
 
-test("HTTP v1 aplica gates, CAS e idempotencia mediante el core", async ({ request }) => {
+test("HTTP v1 reserva estados a la CLI y permite reorganizar backlog con CAS", async ({ request }) => {
   const endpoint = "/api/projects/sample-project/stories/STO-900/move";
   const blocked = await request.post(endpoint, {
     data: {
@@ -64,42 +65,38 @@ test("HTTP v1 aplica gates, CAS e idempotencia mediante el core", async ({ reque
     },
   });
   expect(blocked.status()).toBe(409);
-  expect((await blocked.json()).code).toBe("readiness_incomplete");
+  expect((await blocked.json()).code).toBe("agent_workflow_required");
 
   const filePath = getStoryPath("STO-900");
-  const parsed = matter(await fs.readFile(filePath, "utf8"));
-  parsed.data.readiness_criteria[0].checked = true;
-  parsed.data.revision = 2;
-  await fs.writeFile(filePath, matter.stringify(parsed.content, parsed.data), "utf8");
-
   const payload = {
-    status: "developing",
-    epicId: null,
-    expectedRevision: 2,
-    idempotencyKey: "canonical-transition-1",
+    status: "backlog",
+    epicId: "EPI-900",
+    expectedRevision: 1,
+    idempotencyKey: "canonical-planning-move-1",
   };
   const moved = await request.post(endpoint, { data: payload });
   expect(moved.status()).toBe(200);
   expect(await moved.json()).toMatchObject({
     ok: true,
     storyId: "STO-900",
-    revision: 3,
-    status: "developing",
+    revision: 2,
+    status: "backlog",
   });
 
   const retried = await request.post(endpoint, { data: payload });
   expect(retried.status()).toBe(200);
-  expect(await retried.json()).toMatchObject({ revision: 3, status: "developing" });
+  expect(await retried.json()).toMatchObject({ revision: 2, status: "backlog" });
 
   const stale = await request.post(endpoint, {
-    data: { ...payload, status: "testing", idempotencyKey: "canonical-stale-1" },
+    data: { ...payload, epicId: null, idempotencyKey: "canonical-stale-1" },
   });
   expect(stale.status()).toBe(409);
   expect((await stale.json()).code).toBe("revision_conflict");
 
   const persisted = matter(await fs.readFile(filePath, "utf8"));
-  expect(persisted.data.revision).toBe(3);
-  expect(persisted.data.status).toBe("developing");
+  expect(persisted.data.revision).toBe(2);
+  expect(persisted.data.status).toBe("backlog");
+  expect(persisted.data.epic).toBe("EPI-900");
 
   const timeline = await request.get(
     "/api/projects/sample-project/stories/STO-900/timeline",
@@ -141,12 +138,16 @@ test("PUT y toggles v1 aplican CAS, idempotencia y preservan el body", async ({ 
 
   const storyUpdate = {
     title: "Historia editada mediante HTTP",
+    objective: "Mantener un contrato de planificación completo.",
     description: "Descripción actualizada",
+    scope: ["server/index.js"],
     status: "backlog",
     priority: "high",
+    risk: "standard",
     executionMode: "agent",
     storyType: "feature",
     contextFiles: ["server/index.js"],
+    validation: { commands: ["npm run test:e2e"] },
     readyCriteria: [],
     doneCriteria: [{ id: "http-tested", label: "HTTP validado", kind: "manual", checked: false }],
     subtasks: [{ title: "Transicionar", done: true }],
@@ -168,6 +169,7 @@ test("PUT y toggles v1 aplican CAS, idempotencia y preservan el body", async ({ 
 
   const epicUpdate = {
     title: "Épica editada mediante HTTP",
+    objective: "Mantener un objetivo canónico explícito.",
     description: "Descripción canónica",
     labels: ["http"],
     body: "Épica canónica.",
@@ -190,17 +192,137 @@ test("PUT y toggles v1 aplican CAS, idempotencia y preservan el body", async ({ 
   expect(epic.content.trim()).toBe("Épica canónica.");
 });
 
+test("la UI no suplanta checks agénticos ni acepta planificación incompleta", async ({ request }) => {
+  const filePath = getStoryPath("STO-900");
+  const parsed = matter(await fs.readFile(filePath, "utf8"));
+  parsed.data.execution_mode = "agent";
+  await fs.writeFile(filePath, matter.stringify(parsed.content, parsed.data), "utf8");
+
+  const readiness = await request.post(
+    "/api/projects/sample-project/stories/STO-900/criteria/ready/0/toggle",
+    { data: { expectedRevision: 1, idempotencyKey: "agent-readiness-allowed-1" } },
+  );
+  expect(readiness.status()).toBe(200);
+
+  const toggle = await request.post(
+    "/api/projects/sample-project/stories/STO-900/criteria/done/0/toggle",
+    { data: { expectedRevision: 2, idempotencyKey: "agent-check-denied-1" } },
+  );
+  expect(toggle.status()).toBe(409);
+  expect(await toggle.json()).toMatchObject({ code: "agent_workflow_required" });
+
+  const editorBypass = await request.put(
+    "/api/projects/sample-project/stories/STO-900",
+    {
+      data: {
+        title: "Intento de completar desde el editor",
+        objective: "Probar que el editor no suplanta el trabajo agéntico.",
+        description: "Debe rechazarse.",
+        scope: ["server/index.js"],
+        status: "backlog",
+        priority: "high",
+        risk: "standard",
+        executionMode: "agent",
+        storyType: "feature",
+        contextFiles: ["server/index.js"],
+        validation: { commands: ["npm run test:e2e"] },
+        readyCriteria: [{ id: "ready", label: "Lista para comenzar", kind: "manual", checked: true }],
+        doneCriteria: [{ id: "http-tested", label: "HTTP validado", kind: "manual", checked: true }],
+        subtasks: [{ id: "transition", title: "Transicionar", done: false }],
+        body: "Historia canónica de integración.",
+        expectedRevision: 2,
+        idempotencyKey: "agent-editor-bypass-denied-1",
+      },
+    },
+  );
+  expect(editorBypass.status()).toBe(409);
+  expect(await editorBypass.json()).toMatchObject({ code: "agent_workflow_required" });
+
+  const incomplete = await request.post("/api/projects/sample-project/stories", {
+    data: {
+      id: "STO-902",
+      title: "Contrato incompleto",
+      status: "backlog",
+      priority: "medium",
+      executionMode: "agent",
+      contextFiles: [],
+      doneCriteria: [],
+      idempotencyKey: "incomplete-contract-1",
+    },
+  });
+  expect(incomplete.status()).toBe(400);
+  expect(await incomplete.json()).toMatchObject({
+    code: "planning_contract_incomplete",
+    details: { missing: expect.arrayContaining(["objective", "scope", "validation.commands"]) },
+  });
+});
+
+test("la UI no modifica planificación protegida por un claim activo", async ({ request }) => {
+  const storyPath = getStoryPath("STO-900");
+  const associatedStory = matter(await fs.readFile(storyPath, "utf8"));
+  associatedStory.data.epic = "EPI-900";
+  await fs.writeFile(storyPath, matter.stringify(associatedStory.content, associatedStory.data), "utf8");
+
+  const runtime = openRuntime(projectRoot);
+  try {
+    runtime.claimStory({ storyId: "STO-900", agentId: "agent-e2e" });
+  } finally {
+    runtime.close();
+  }
+
+  const update = {
+    title: "Cambio concurrente no permitido",
+    objective: "No interferir con el intento activo.",
+    description: "Debe rechazarse.",
+    scope: ["server/index.js"],
+    status: "backlog",
+    priority: "high",
+    risk: "standard",
+    executionMode: "human",
+    storyType: "feature",
+    contextFiles: ["server/index.js"],
+    validation: { commands: ["npm run test:e2e"] },
+    readyCriteria: [{ id: "ready", label: "Lista", kind: "manual", checked: false }],
+    doneCriteria: [{ id: "http-tested", label: "HTTP validado", kind: "manual", checked: false }],
+    subtasks: [{ title: "Transicionar", done: false }],
+    body: "Historia canónica de integración.",
+    expectedRevision: 1,
+    idempotencyKey: "active-claim-edit-1",
+  };
+  const response = await request.put("/api/projects/sample-project/stories/STO-900", { data: update });
+  expect(response.status()).toBe(409);
+  expect(await response.json()).toMatchObject({ code: "active_claim_protected" });
+
+  const epicResponse = await request.put("/api/projects/sample-project/epics/EPI-900", {
+    data: {
+      title: "Cambio de épica concurrente no permitido",
+      objective: "No alterar el marco del intento activo.",
+      description: "Debe rechazarse.",
+      labels: [],
+      body: "Épica canónica.",
+      expectedRevision: 1,
+      idempotencyKey: "active-claim-epic-edit-1",
+    },
+  });
+  expect(epicResponse.status()).toBe(409);
+  expect(await epicResponse.json()).toMatchObject({ code: "active_claim_protected" });
+});
+
 test("POST crea stories y epics v1 de forma idempotente desde payloads de la UI", async ({ request }) => {
   const storyPayload = {
     id: "STO-901",
     title: "Creación canónica",
+    objective: "Crear una historia completa desde la UI.",
     description: "Creada desde el contrato compatible de la UI.",
+    scope: ["server/index.js"],
     status: "backlog",
     priority: "medium",
+    risk: "standard",
     agentOwner: "codex-e2e",
     executionMode: "agent",
     storyType: "feature",
     contextFiles: ["server/index.js"],
+    validation: { commands: ["npm run test:e2e"] },
     subtasks: [{ title: "Persistir", done: false }],
     doneCriteria: [{ id: "persisted", label: "Persistida", kind: "manual", checked: false }],
     body: "Body inicial.",
@@ -223,6 +345,7 @@ test("POST crea stories y epics v1 de forma idempotente desde payloads de la UI"
   const epicPayload = {
     id: "EPI-901",
     title: "Épica creada canónicamente",
+    objective: "Agrupar contratos creados desde la UI.",
     description: "Desde el payload de la UI.",
     labels: ["canonical"],
     body: "Body de épica.",

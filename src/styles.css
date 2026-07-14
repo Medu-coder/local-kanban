@@ -302,7 +302,11 @@ pre {
 .subtask-editor,
 .markdown-body,
 .empty-column,
-.error-banner {
+.error-banner,
+.warning-banner,
+.agent-contract-note,
+.agent-next-action,
+.agent-policy-note {
   box-shadow: var(--shadow-md);
 }
 
@@ -1911,6 +1915,45 @@ pre {
   gap: var(--space-4);
 }
 
+.agent-contract-note,
+.agent-next-action,
+.agent-policy-note {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 184, 132, 0.22);
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(255, 154, 92, 0.13), rgba(255, 208, 142, 0.05));
+  color: var(--muted-strong);
+}
+
+.agent-contract-note strong,
+.agent-next-action strong {
+  color: var(--text-strong);
+}
+
+.agent-next-action {
+  margin-bottom: 20px;
+}
+
+.agent-next-action > span {
+  color: var(--accent);
+  font-size: var(--meta-label-size);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.agent-policy-note {
+  margin: -8px 0 20px;
+  border-color: rgba(167, 177, 255, 0.2);
+  background: rgba(167, 177, 255, 0.08);
+}
+
+.story-card[draggable="false"] {
+  cursor: pointer;
+}
+
 .field-grid {
   flex-wrap: wrap;
 }
@@ -2277,6 +2320,7 @@ pre {
 
 .setup-panel,
 .error-banner,
+.warning-banner,
 .empty-column {
   border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -2297,6 +2341,13 @@ pre {
   padding: 14px 16px;
   background: rgba(255, 123, 114, 0.12);
   color: #ffc2bc;
+}
+
+.warning-banner {
+  padding: 14px 16px;
+  border-color: rgba(255, 208, 142, 0.28);
+  background: rgba(255, 208, 142, 0.11);
+  color: #ffe0aa;
 }
 
 .empty-column {

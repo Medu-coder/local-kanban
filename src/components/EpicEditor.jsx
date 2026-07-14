@@ -6,6 +6,7 @@ function makeInitialState(epic) {
     return {
       id: epic.id ?? "",
       title: epic.title ?? "",
+      objective: epic.objective ?? "",
       description: epic.description ?? "",
       labels: Array.isArray(epic.labels) ? epic.labels.join(", ") : "",
       body: epic.body ?? "",
@@ -15,6 +16,7 @@ function makeInitialState(epic) {
   return {
     id: "",
     title: "",
+    objective: "",
     description: "",
     labels: "",
     body: "",
@@ -26,6 +28,7 @@ function normalizeState(epic, form) {
   return {
     id: base.id.trim(),
     title: base.title.trim(),
+    objective: base.objective.trim(),
     description: base.description.trim(),
     labels: base.labels
       .split(",")
@@ -77,6 +80,7 @@ export function EpicEditor({
       idempotencyKey: mutationKeyRef.current,
       id: form.id.trim() || undefined,
       title: form.title,
+      objective: form.objective,
       description: form.description,
       labels: form.labels
         .split(",")
@@ -120,6 +124,17 @@ export function EpicEditor({
             data-testid="epic-title-input"
             value={form.title}
             onChange={(event) => updateField("title", event.target.value)}
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Objetivo</span>
+          <textarea
+            data-testid="epic-objective-input"
+            rows="3"
+            value={form.objective}
+            onChange={(event) => updateField("objective", event.target.value)}
             required
           />
         </label>

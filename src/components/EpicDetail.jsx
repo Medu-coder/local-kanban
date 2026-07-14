@@ -16,6 +16,7 @@ export function EpicDetail({ epic, stories, onClose, onEdit, onCreateStory }) {
     testing: 0,
     done: 0,
   };
+  const hasActiveWork = stories.some((story) => story.coordination?.claim);
 
   return (
     <aside className="detail-panel" onClick={(event) => event.stopPropagation()} data-testid="epic-detail-panel">
@@ -25,7 +26,13 @@ export function EpicDetail({ epic, stories, onClose, onEdit, onCreateStory }) {
           <h2>{epic.title}</h2>
         </div>
         <div className="panel-actions">
-          <button className="ghost-button" type="button" onClick={() => onEdit(epic)}>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() => onEdit(epic)}
+            disabled={hasActiveWork}
+            title={hasActiveWork ? "La épica contiene trabajo reclamado" : "Editar planificación de la épica"}
+          >
             Editar
           </button>
           <button className="ghost-button" type="button" onClick={onClose}>
@@ -68,6 +75,7 @@ export function EpicDetail({ epic, stories, onClose, onEdit, onCreateStory }) {
 
       <section className="detail-section">
         <h3>Descripción</h3>
+        <p className="detail-copy"><strong>Objetivo:</strong> {epic.objective}</p>
         <p className="detail-copy">{epic.description || "Sin resumen breve."}</p>
         <pre className="markdown-body">{epic.body || "Sin contenido adicional."}</pre>
       </section>

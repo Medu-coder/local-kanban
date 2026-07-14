@@ -89,10 +89,15 @@ function makeInitialState(story, draft) {
     return {
       id: story.id,
       title: story.title ?? "",
+      objective: story.objective ?? "",
       description: story.description ?? "",
+      scope: listToString(story.scope, "\n"),
+      nonScope: listToString(story.nonScope, "\n"),
       epicId: story.epicId ?? "",
       status: story.status ?? "backlog",
       priority: story.priority ?? "medium",
+      risk: story.risk ?? "standard",
+      rank: Number.isSafeInteger(story.rank) ? String(story.rank) : "",
       assignee: story.assignee ?? "",
       agentOwner: story.agentOwner ?? "",
       executionMode: story.executionMode ?? "human",
@@ -101,6 +106,7 @@ function makeInitialState(story, draft) {
       blockedBy: listToString(story.blockedBy),
       relatedTo: listToString(story.relatedTo),
       contextFiles: listToString(story.contextFiles, "\n"),
+      validationCommands: listToString(story.validation?.commands, "\n"),
       body: story.body ?? "",
       subtasks: Array.isArray(story.subtasks) && story.subtasks.length
         ? story.subtasks.map(hydrateSubtask)
@@ -117,22 +123,28 @@ function makeInitialState(story, draft) {
   return {
     id: "",
     title: "",
+    objective: "",
     description: "",
+    scope: "",
+    nonScope: "",
     epicId: draft?.epicId ?? "",
     status: draft?.status ?? "backlog",
     priority: "medium",
+    risk: "standard",
+    rank: "",
     assignee: "",
     agentOwner: "",
-    executionMode: "human",
+    executionMode: "agent",
     storyType: "feature",
     labels: "",
     blockedBy: "",
     relatedTo: "",
     contextFiles: "",
+    validationCommands: "",
     body: "",
     subtasks: [{ ...emptySubtask, uiKey: createUiKey("subtask") }],
     readyCriteria: [],
-    doneCriteria: [],
+    doneCriteria: [{ ...hydrateCriterion({ id: "acceptance-1", label: "", kind: "manual" }) }],
   };
 }
 
@@ -142,10 +154,15 @@ function normalizeFormState(story, draft) {
   return {
     id: baseState.id.trim(),
     title: baseState.title.trim(),
+    objective: baseState.objective.trim(),
     description: baseState.description.trim(),
+    scope: parseMultilineList(baseState.scope),
+    nonScope: parseMultilineList(baseState.nonScope),
     epicId: baseState.epicId || "",
     status: baseState.status,
     priority: baseState.priority,
+    risk: baseState.risk,
+    rank: baseState.rank === "" ? null : Number(baseState.rank),
     assignee: baseState.assignee.trim(),
     agentOwner: baseState.agentOwner.trim(),
     executionMode: baseState.executionMode,
@@ -154,6 +171,7 @@ function normalizeFormState(story, draft) {
     blockedBy: parseInlineList(baseState.blockedBy),
     relatedTo: parseInlineList(baseState.relatedTo),
     contextFiles: parseMultilineList(baseState.contextFiles),
+    validationCommands: parseMultilineList(baseState.validationCommands),
     body: baseState.body.trim(),
     subtasks: baseState.subtasks
       .map((subtask) => ({
@@ -190,10 +208,15 @@ export function StoryEditor({
     const currentState = {
       id: form.id.trim(),
       title: form.title.trim(),
+      objective: form.objective.trim(),
       description: form.description.trim(),
+      scope: parseMultilineList(form.scope),
+      nonScope: parseMultilineList(form.nonScope),
       epicId: form.epicId || "",
       status: form.status,
       priority: form.priority,
+      risk: form.risk,
+      rank: form.rank === "" ? null : Number(form.rank),
       assignee: form.assignee.trim(),
       agentOwner: form.agentOwner.trim(),
       executionMode: form.executionMode,
@@ -202,6 +225,7 @@ export function StoryEditor({
       blockedBy: parseInlineList(form.blockedBy),
       relatedTo: parseInlineList(form.relatedTo),
       contextFiles: parseMultilineList(form.contextFiles),
+      validationCommands: parseMultilineList(form.validationCommands),
       body: form.body.trim(),
       subtasks: form.subtasks
         .map((subtask) => ({
@@ -307,10 +331,15 @@ export function StoryEditor({
       idempotencyKey: mutationKeyRef.current,
       id: form.id.trim() || undefined,
       title: form.title,
+      objective: form.objective,
       description: form.description,
+      scope: parseMultilineList(form.scope),
+      nonScope: parseMultilineList(form.nonScope),
       epicId: form.epicId || null,
       status: form.status,
       priority: form.priority,
+      risk: form.risk,
+      rank: form.rank === "" ? null : Number(form.rank),
       assignee: form.assignee.trim() || null,
       agentOwner: form.agentOwner.trim() || null,
       executionMode: form.executionMode,
@@ -318,6 +347,7 @@ export function StoryEditor({
       blockedBy: parseInlineList(form.blockedBy),
       relatedTo: parseInlineList(form.relatedTo),
       contextFiles: parseMultilineList(form.contextFiles),
+      validation: { commands: parseMultilineList(form.validationCommands) },
       labels: parseInlineList(form.labels),
       body: form.body,
       subtasks: form.subtasks
@@ -327,6 +357,14 @@ export function StoryEditor({
       doneCriteria: normalizeCriteria(form.doneCriteria),
     });
   }
+
+  const contractComplete =
+    form.objective.trim() &&
+    parseMultilineList(form.scope).length > 0 &&
+    parseMultilineList(form.contextFiles).length > 0 &&
+    parseMultilineList(form.validationCommands).length > 0 &&
+    normalizeCriteria(form.doneCriteria).length > 0;
+  const canMarkExecutionProgress = form.executionMode === "human";
 
   return (
     <aside className="editor-panel" onClick={(event) => event.stopPropagation()} data-testid="story-editor-panel">
@@ -341,6 +379,10 @@ export function StoryEditor({
       </div>
 
       <form ref={formRef} className="editor-form" onSubmit={handleSubmit}>
+        <div className="agent-contract-note">
+          <strong>Contrato de planificación</strong>
+          <span>La ejecución, los checks y las transiciones se realizan con la CLI y un claim vigente.</span>
+        </div>
         <label className="field">
           <span>ID</span>
           <input
@@ -358,6 +400,17 @@ export function StoryEditor({
         </label>
 
         <label className="field">
+          <span>Objetivo</span>
+          <textarea
+            data-testid="story-objective-input"
+            rows="3"
+            value={form.objective}
+            onChange={(event) => updateField("objective", event.target.value)}
+            required
+          />
+        </label>
+
+        <label className="field">
           <span>Descripcion</span>
           <textarea
             rows="3"
@@ -365,6 +418,28 @@ export function StoryEditor({
             onChange={(event) => updateField("description", event.target.value)}
           />
         </label>
+
+        <div className="field-grid">
+          <label className="field">
+            <span>Scope · una ruta o resultado por línea</span>
+            <textarea
+              data-testid="story-scope-input"
+              rows="4"
+              value={form.scope}
+              onChange={(event) => updateField("scope", event.target.value)}
+              required
+            />
+          </label>
+          <label className="field">
+            <span>Fuera de scope · opcional</span>
+            <textarea
+              data-testid="story-non-scope-input"
+              rows="4"
+              value={form.nonScope}
+              onChange={(event) => updateField("nonScope", event.target.value)}
+            />
+          </label>
+        </div>
 
         <div className="field-grid">
           <label className="field">
@@ -392,6 +467,27 @@ export function StoryEditor({
               <option value="testing">Testing</option>
               <option value="done">Done</option>
             </select>
+          </label>
+        </div>
+
+        <div className="field-grid">
+          <label className="field">
+            <span>Riesgo</span>
+            <select data-testid="story-risk-select" value={form.risk} onChange={(event) => updateField("risk", event.target.value)}>
+              <option value="standard">Standard</option>
+              <option value="high">High · requiere review independiente</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Rank · opcional</span>
+            <input
+              data-testid="story-rank-input"
+              type="number"
+              min="0"
+              step="1"
+              value={form.rank}
+              onChange={(event) => updateField("rank", event.target.value)}
+            />
           </label>
         </div>
 
@@ -484,6 +580,18 @@ export function StoryEditor({
           />
         </label>
 
+        <label className="field">
+          <span>Validación · un comando por línea</span>
+          <textarea
+            data-testid="story-validation-input"
+            rows="4"
+            value={form.validationCommands}
+            onChange={(event) => updateField("validationCommands", event.target.value)}
+            placeholder={"npm run check\nnpm test"}
+            required
+          />
+        </label>
+
         <section className="editor-section">
           <div className="editor-section__header">
             <h3>Ready checklist</h3>
@@ -499,6 +607,7 @@ export function StoryEditor({
                   <label className="field">
                     <span>Etiqueta</span>
                     <input
+                      data-testid={`ready-criterion-${index}-label-input`}
                       value={criterion.label}
                       onChange={(event) =>
                         updateCriteria("readyCriteria", index, "label", event.target.value)
@@ -572,6 +681,7 @@ export function StoryEditor({
                   <label className="field">
                     <span>Etiqueta</span>
                     <input
+                      data-testid={`done-criterion-${index}-label-input`}
                       value={criterion.label}
                       onChange={(event) =>
                         updateCriteria("doneCriteria", index, "label", event.target.value)
@@ -614,6 +724,7 @@ export function StoryEditor({
                       <input
                         type="checkbox"
                         checked={Boolean(criterion.checked)}
+                        disabled={!canMarkExecutionProgress}
                         onChange={(event) =>
                           updateCriteria("doneCriteria", index, "checked", event.target.checked)
                         }
@@ -659,6 +770,7 @@ export function StoryEditor({
                     <input
                       type="checkbox"
                       checked={Boolean(subtask.done)}
+                      disabled={!canMarkExecutionProgress}
                       onChange={(event) => updateSubtask(index, "done", event.target.checked)}
                     />
                     <span>Done</span>
@@ -683,7 +795,7 @@ export function StoryEditor({
           />
         </label>
 
-        <button className="primary-button" type="submit" disabled={isSaving} data-testid="save-story-button">
+        <button className="primary-button" type="submit" disabled={isSaving || !contractComplete} data-testid="save-story-button">
           {isSaving ? "Guardando..." : story ? "Guardar cambios" : "Crear historia"}
         </button>
       </form>

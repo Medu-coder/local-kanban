@@ -1,4 +1,4 @@
-function renderSubtask(subtask, index, onToggleSubtask, isUpdatingSubtask) {
+function renderSubtask(subtask, index, onToggleSubtask, isUpdatingSubtask, canMutate) {
   if (typeof subtask === "string") {
     return (
       <li key={`${subtask}-${index}`}>
@@ -15,7 +15,7 @@ function renderSubtask(subtask, index, onToggleSubtask, isUpdatingSubtask) {
           type="checkbox"
           checked={Boolean(subtask.done)}
           onChange={() => onToggleSubtask(index)}
-          disabled={isUpdatingSubtask}
+          disabled={isUpdatingSubtask || !canMutate}
         />
         <span className={`subtask-state ${subtask.done ? "is-done" : ""}`} />
         <span>{subtask.title}</span>
@@ -36,7 +36,7 @@ function renderStoryReference(story) {
   );
 }
 
-function ChecklistSection({ title, criteria, progress, onToggleCriterion, isUpdatingCriterion }) {
+function ChecklistSection({ title, criteria, progress, onToggleCriterion, isUpdatingCriterion, canMutate }) {
   return (
     <section className="detail-section">
       <div className="detail-section__header detail-section__header--sticky">
@@ -54,7 +54,7 @@ function ChecklistSection({ title, criteria, progress, onToggleCriterion, isUpda
                 <input
                   type="checkbox"
                   checked={Boolean(criterion.checked)}
-                  disabled={!criterion.editable || isUpdatingCriterion}
+                  disabled={!criterion.editable || isUpdatingCriterion || !canMutate}
                   onChange={() => onToggleCriterion(index)}
                 />
                 <span className={`subtask-state ${criterion.checked ? "is-done" : ""}`} />
@@ -101,6 +101,29 @@ export function StoryDetail({
     return null;
   }
 
+  const canPlan =
+    story.status === "backlog" &&
+    !story.quarantine &&
+    !story.coordination?.claim;
+  const canCheckInUi = canPlan && story.executionMode === "human";
+  const canMarkReadiness = canPlan;
+  const nextAction = story.quarantine
+    ? "Resolver la cuarentena antes de continuar."
+    : story.coordination?.claim?.status === "stale"
+      ? `Recuperar o liberar el intento ${story.coordination.attempt?.id ?? "activo"}.`
+      : story.coordination?.blocks?.length
+        ? story.coordination.blocks[0].action
+        : story.coordination?.checkpoint?.payload?.nextAction
+          ?? (story.coordination?.claim
+            ? "Continuar mediante la CLI con el attemptId y fencing token vigentes."
+            : story.status === "backlog" && story.isReadyForDeveloping
+              ? `local-kanban claim ${story.id}`
+              : story.status === "backlog"
+                ? "Completar la Definition of Ready antes de reclamar."
+                : story.status === "testing"
+                  ? "Revisar la entrega y completar como orquestador."
+                  : "Consultar local-kanban next para la siguiente acción.");
+
   return (
     <aside className="detail-panel" onClick={(event) => event.stopPropagation()} data-testid="story-detail-panel">
       <div className="detail-panel__header">
@@ -109,7 +132,14 @@ export function StoryDetail({
           <h2>{story.title}</h2>
         </div>
         <div className="panel-actions">
-          <button className="ghost-button" onClick={() => onEdit(story)} type="button" data-testid="edit-story-button">
+          <button
+            className="ghost-button"
+            onClick={() => onEdit(story)}
+            type="button"
+            data-testid="edit-story-button"
+            disabled={!canPlan}
+            title={canPlan ? "Editar planificación" : "Solo se edita en backlog y sin claim activo"}
+          >
             Editar
           </button>
           <button className="ghost-button" onClick={onClose} type="button" data-testid="close-story-detail-button">
@@ -133,7 +163,22 @@ export function StoryDetail({
         {story.isDoneValidated ? <span className="status-chip status-chip--validated">Done validado</span> : null}
         <span className="status-chip">{story.executionMode}</span>
         <span className="status-chip">{story.storyType}</span>
+        <span className={`status-chip ${story.risk === "high" ? "status-chip--blocked" : ""}`}>
+          riesgo {story.risk}
+        </span>
       </div>
+
+      <section className="agent-next-action" data-testid="story-next-action">
+        <span>Siguiente acción canónica</span>
+        <strong>{nextAction}</strong>
+      </section>
+
+      {story.executionMode !== "human" ? (
+        <p className="agent-policy-note" data-testid="agent-mutations-readonly">
+          La aceptación y las subtareas son de solo lectura aquí. Usa <code>local-kanban check</code>
+          con el intento y fencing token vigentes. La readiness manual puede confirmarse antes del claim.
+        </p>
+      ) : null}
 
       <dl className="detail-grid">
         <div>
@@ -155,6 +200,10 @@ export function StoryDetail({
         <div>
           <dt>Prioridad</dt>
           <dd>{story.priority}</dd>
+        </div>
+        <div>
+          <dt>Rank</dt>
+          <dd>{story.rank ?? "Sin rank"}</dd>
         </div>
         <div>
           <dt>Asignado</dt>
@@ -183,11 +232,17 @@ export function StoryDetail({
             <ul className="subtask-list">
               {story.coordination.blocks.map((block) => (
                 <li key={block.id}>
-                  <strong>{block.type}</strong>: {block.action} ({block.owner})
+                  <strong>{block.type}</strong>: {block.description}
+                  <p className="muted">Acción: {block.action} · Responsable: {block.owner}</p>
+                  <p className="muted">Reanudar cuando: {block.resumeCondition}</p>
+                  {block.evidence ? <p className="muted">Evidencia: {block.evidence}</p> : null}
                   <button
                     className="ghost-button"
                     type="button"
                     onClick={async () => {
+                      if (!window.confirm(`Confirma que se cumple la condición de reanudación: ${block.resumeCondition}`)) {
+                        return;
+                      }
                       try {
                         setOperationalError("");
                         await resolveStoryBlock(story.projectId, story.id, block.id, {
@@ -211,6 +266,9 @@ export function StoryDetail({
               className="ghost-button"
               type="button"
               onClick={async () => {
+                if (!window.confirm("Esto abandonará el intento activo y liberará su claim. ¿Quieres continuar?")) {
+                  return;
+                }
                 try {
                   setOperationalError("");
                   await releaseStoryClaim(story.projectId, story.id, {
@@ -222,7 +280,7 @@ export function StoryDetail({
                   setTimelineRevision((revision) => revision + 1);
                 } catch (error) { setOperationalError(error.message); }
               }}
-            >Liberar claim</button>
+            >Abandonar intento</button>
           ) : null}
           {operationalError ? <p className="error-banner">{operationalError}</p> : null}
         </section>
@@ -250,8 +308,23 @@ export function StoryDetail({
 
       <section className="detail-section">
         <h3>Descripción</h3>
+        <p className="detail-copy"><strong>Objetivo:</strong> {story.objective}</p>
         <p className="detail-copy">{story.description || "Sin resumen breve."}</p>
         <pre className="markdown-body">{story.body || "Sin contenido adicional."}</pre>
+      </section>
+
+      <section className="detail-section">
+        <h3>Scope operativo</h3>
+        <div className="relation-grid">
+          <div>
+            <p className="muted">Dentro de scope</p>
+            {story.scope.length ? story.scope.map((item) => <code key={item} className="file-chip">{item}</code>) : <p className="muted">Sin scope declarado.</p>}
+          </div>
+          <div>
+            <p className="muted">Fuera de scope</p>
+            {story.nonScope.length ? story.nonScope.map((item) => <code key={item} className="file-chip">{item}</code>) : <p className="muted">Sin exclusiones declaradas.</p>}
+          </div>
+        </div>
       </section>
 
       <ChecklistSection
@@ -260,6 +333,7 @@ export function StoryDetail({
         progress={story.readyCriteriaProgress}
         onToggleCriterion={(index) => onToggleCriterion("ready", index)}
         isUpdatingCriterion={isUpdatingCriterion}
+        canMutate={canMarkReadiness}
       />
 
       <ChecklistSection
@@ -268,6 +342,7 @@ export function StoryDetail({
         progress={story.doneCriteriaProgress}
         onToggleCriterion={(index) => onToggleCriterion("done", index)}
         isUpdatingCriterion={isUpdatingCriterion}
+        canMutate={canCheckInUi}
       />
 
       <section className="detail-section">
@@ -275,7 +350,7 @@ export function StoryDetail({
         {story.subtasks.length ? (
           <ul className="subtask-list">
             {story.subtasks.map((subtask, index) =>
-              renderSubtask(subtask, index, onToggleSubtask, isUpdatingSubtask)
+              renderSubtask(subtask, index, onToggleSubtask, isUpdatingSubtask, canCheckInUi)
             )}
           </ul>
         ) : (
@@ -314,6 +389,26 @@ export function StoryDetail({
         ) : (
           <p className="muted">No hay contexto definido.</p>
         )}
+      </section>
+
+      <section className="detail-section">
+        <h3>Validación declarada</h3>
+        {story.validation?.commands?.length ? (
+          <div className="file-chip-list">
+            {story.validation.commands.map((command) => <code key={command} className="file-chip">{command}</code>)}
+          </div>
+        ) : <p className="muted">Sin comandos de validación.</p>}
+      </section>
+
+      <section className="detail-section">
+        <h3>Evidencia</h3>
+        {story.evidence.length ? (
+          <ul className="subtask-list">
+            {story.evidence.map((item) => (
+              <li key={item.id}><strong>{item.type}</strong> · {item.actor} · <code>{item.commit}</code><br />{item.summary}</li>
+            ))}
+          </ul>
+        ) : <p className="muted">Aún no hay evidencia vigente.</p>}
       </section>
 
       <section className="detail-section">

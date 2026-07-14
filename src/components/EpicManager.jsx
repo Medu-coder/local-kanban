@@ -22,26 +22,37 @@ export function EpicManager({ project, onCreateEpic, onEditEpic, onClose }) {
 
       <section className="epic-manager-list">
         {project.epics.length ? (
-          project.epics.map((epic) => (
-            <article key={epic.id} className="epic-manager-card">
-              <div className="epic-manager-card__header">
-                <div className="epic-manager-card__title">
-                  <p className="eyebrow">Epic</p>
-                  <h3>{epic.title}</h3>
+          project.epics.map((epic) => {
+            const hasActiveWork = project.stories.some(
+              (story) => story.epicId === epic.id && story.coordination?.claim,
+            );
+            return (
+              <article key={epic.id} className="epic-manager-card">
+                <div className="epic-manager-card__header">
+                  <div className="epic-manager-card__title">
+                    <p className="eyebrow">Epic</p>
+                    <h3>{epic.title}</h3>
+                  </div>
+                  <span className="count-pill">{epic.storyCount ?? 0}</span>
                 </div>
-                <span className="count-pill">{epic.storyCount ?? 0}</span>
-              </div>
-              <p className="muted epic-manager-card__description">{epic.description || "Sin descripcion breve."}</p>
-              <div className="epic-manager-card__footer">
-                <code className="file-chip epic-manager-card__id" title={epic.id}>
-                  {epic.id}
-                </code>
-                <button className="ghost-button epic-manager-card__edit" type="button" onClick={() => onEditEpic(epic)}>
-                  Editar
-                </button>
-              </div>
-            </article>
-          ))
+                <p className="muted epic-manager-card__description">{epic.description || "Sin descripcion breve."}</p>
+                <div className="epic-manager-card__footer">
+                  <code className="file-chip epic-manager-card__id" title={epic.id}>
+                    {epic.id}
+                  </code>
+                  <button
+                    className="ghost-button epic-manager-card__edit"
+                    type="button"
+                    onClick={() => onEditEpic(epic)}
+                    disabled={hasActiveWork}
+                    title={hasActiveWork ? "La épica contiene trabajo reclamado" : "Editar planificación de la épica"}
+                  >
+                    Editar
+                  </button>
+                </div>
+              </article>
+            );
+          })
         ) : (
           <div className="empty-column">
             <p>No hay épicas en este proyecto.</p>

@@ -1,4 +1,4 @@
-export function StoryCard({ story, onSelect, onDragStart, onDragEnd }) {
+export function StoryCard({ story, onSelect, onDragStart, onDragEnd, canDrag }) {
   const doneSubtasks = story.subtasks.filter((subtask) =>
     typeof subtask === "object" ? subtask.done : false
   ).length;
@@ -12,7 +12,8 @@ export function StoryCard({ story, onSelect, onDragStart, onDragEnd }) {
     <article
       className="story-card"
       data-testid={`story-card-${story.id}`}
-      draggable
+      draggable={canDrag}
+      title={canDrag ? "Reorganizar esta historia de backlog entre épicas" : "El estado operativo se gestiona mediante la CLI"}
       role="button"
       tabIndex={0}
       onClick={(event) => {
@@ -25,7 +26,9 @@ export function StoryCard({ story, onSelect, onDragStart, onDragEnd }) {
           handleActivate();
         }
       }}
-      onDragStart={() => onDragStart(story)}
+      onDragStart={() => {
+        if (canDrag) onDragStart(story);
+      }}
       onDragEnd={onDragEnd}
     >
       <div className="story-card__top">

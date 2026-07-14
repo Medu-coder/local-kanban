@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs/promises";
-import { getStoryPath, resetFixtureWorkspace } from "../helpers/fixture.js";
+import { openRuntime } from "../../core/runtime.js";
+import { getStoryPath, projectRoot, resetFixtureWorkspace } from "../helpers/fixture.js";
 
 async function dragStory(page, storyId, laneId, statusId) {
   const source = page.getByTestId(`story-card-${storyId}`);
@@ -11,6 +12,14 @@ async function dragStory(page, storyId, laneId, statusId) {
   await target.dispatchEvent("dragover", { dataTransfer });
   await target.dispatchEvent("drop", { dataTransfer });
   await source.dispatchEvent("dragend", { dataTransfer });
+}
+
+async function fillAgenticContract(page, { objective, scope, contextFile }) {
+  await page.getByTestId("story-objective-input").fill(objective);
+  await page.getByTestId("story-scope-input").fill(scope);
+  await page.getByTestId("story-context-files-input").fill(contextFile);
+  await page.getByTestId("story-validation-input").fill("npm run test:e2e");
+  await page.getByTestId("done-criterion-0-label-input").fill("Resultado validado");
 }
 
 test.beforeEach(async ({ page }) => {
@@ -26,6 +35,30 @@ test("carga el proyecto y cierra el detalle al pinchar fuera", async ({ page }) 
   await expect(page.getByTestId("story-detail-panel")).toHaveCount(0);
 });
 
+test("confirmación explícita protege el abandono de un intento", async ({ page }) => {
+  const runtime = openRuntime(projectRoot);
+  try {
+    runtime.claimStory({ storyId: "STO-001", agentId: "agent-e2e" });
+  } finally {
+    runtime.close();
+  }
+  await page.reload();
+  await page.getByTestId("story-card-STO-001").click();
+
+  const abandonButton = page.getByRole("button", { name: "Abandonar intento" });
+  await expect(abandonButton).toBeVisible();
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toContain("abandonará el intento activo");
+    await dialog.dismiss();
+  });
+  await abandonButton.click();
+  await expect(abandonButton).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await abandonButton.click();
+  await expect(abandonButton).toHaveCount(0);
+});
+
 test("abre una historia mediante deep link estable", async ({ page }) => {
   await page.goto("/?project=sample-project&story=STO-001");
   await expect(page.getByTestId("story-detail-panel")).toBeVisible();
@@ -38,7 +71,11 @@ test("crea una historia desde toolbar y la muestra en el tablero", async ({ page
   await page.getByTestId("story-title-input").fill("Nueva historia E2E");
   await page.getByTestId("story-agent-owner-input").fill("codex-e2e");
   await page.getByTestId("story-execution-mode-select").selectOption("agent");
-  await page.getByTestId("story-context-files-input").fill("src/new-file.ts");
+  await fillAgenticContract(page, {
+    objective: "Validar la creación completa desde la UI.",
+    scope: "src/new-file.ts",
+    contextFile: "src/new-file.ts",
+  });
   await page.getByTestId("save-story-button").click();
 
   await expect(page.getByTestId("story-card-STO-nueva-historia-e2e")).toBeVisible();
@@ -71,6 +108,7 @@ test("crea y edita una épica desde el gestor", async ({ page }) => {
   await expect(page.getByTestId("epic-manager-panel")).toBeVisible();
   await page.getByTestId("create-epic-button").click();
   await page.getByTestId("epic-title-input").fill("Nueva épica E2E");
+  await page.getByTestId("epic-objective-input").fill("Agrupar el trabajo E2E relacionado.");
   await page.getByTestId("epic-description-input").fill("Descripción E2E");
   await page.getByTestId("save-epic-button").click();
 
@@ -85,6 +123,9 @@ test("fija la creación de historias en backlog", async ({ page }) => {
 
 test("bloquea en edición los campos que requieren operaciones canónicas", async ({ page }) => {
   await page.getByTestId("story-card-STO-001").click();
+  await expect(page.getByTestId("agent-mutations-readonly")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Validacion funcional/u })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: /Pintar indicadores/u })).toBeDisabled();
   await page.getByRole("button", { name: "Editar" }).click();
   await expect(page.getByTestId("story-status-select")).toBeDisabled();
   await expect(page.getByTestId("story-epic-select")).toBeDisabled();
@@ -95,12 +136,22 @@ test("crea una historia sin épica y luego la mueve a una épica", async ({ page
   await page.getByTestId("create-story-button").click();
   await page.getByTestId("story-title-input").fill("Historia sin epic");
   await page.getByTestId("story-agent-owner-input").fill("codex-no-epic");
-  await page.getByTestId("story-context-files-input").fill("src/no-epic.ts");
+  await fillAgenticContract(page, {
+    objective: "Comprobar la reorganización segura del backlog.",
+    scope: "src/no-epic.ts",
+    contextFile: "src/no-epic.ts",
+  });
   await page.getByTestId("save-story-button").click();
 
   await expect(page.getByTestId("epic-lane-__no_epic__")).toContainText("Historia sin epic");
   await dragStory(page, "STO-historia-sin-epic", "EPI-001", "backlog");
   await expect(page.getByTestId("dropzone-EPI-001-backlog")).toContainText("Historia sin epic");
+});
+
+test("el tablero no permite avanzar estados mediante drag and drop", async ({ page }) => {
+  await dragStory(page, "STO-001", "EPI-001", "developing");
+  await expect(page.getByTestId("dropzone-EPI-001-backlog")).toContainText("Preparar contrato agentico");
+  await expect(page.getByTestId("dropzone-EPI-001-developing")).not.toContainText("Preparar contrato agentico");
 });
 
 test("abre y cierra detalle de épica pinchando fuera", async ({ page }) => {

@@ -267,7 +267,8 @@ function enrichStories(project, stories) {
     });
     const isBlocked =
       blockedByStories.some((linkedStory) => !linkedStory.exists || linkedStory.status !== "done") ||
-      (story.blockers?.length ?? 0) > 0;
+      (story.blockers?.length ?? 0) > 0 ||
+      (story.coordination?.blocks?.length ?? 0) > 0;
     const readyCriteria = hydrateCriteria(story.readyCriteria, story, storyLookup);
     const doneCriteria = hydrateCriteria(story.doneCriteria, story, storyLookup);
     const readyCriteriaProgress = createCriteriaProgress(readyCriteria);
@@ -326,10 +327,15 @@ function sanitizeStoryPayload(payload, projectId) {
     type: "story",
     project: projectId,
     title,
+    objective: String(payload.objective ?? "").trim(),
     description: String(payload.description ?? "").trim(),
+    scope: coerceStringList(payload.scope),
+    nonScope: coerceStringList(payload.nonScope),
     epic: payload.epicId ? String(payload.epicId).trim() : null,
     status,
     priority,
+    risk: ["standard", "high"].includes(payload.risk) ? payload.risk : null,
+    rank: Number.isSafeInteger(payload.rank) && payload.rank >= 0 ? payload.rank : null,
     assignee: payload.assignee ? String(payload.assignee).trim() : null,
     agentOwner: payload.agentOwner ? String(payload.agentOwner).trim() : null,
     executionMode: executionModes.includes(payload.executionMode) ? payload.executionMode : "human",
@@ -364,6 +370,7 @@ function sanitizeEpicPayload(payload, projectId) {
     type: "epic",
     project: projectId,
     title,
+    objective: String(payload.objective ?? "").trim(),
     description: String(payload.description ?? "").trim(),
     labels: Array.isArray(payload.labels)
       ? payload.labels.map((label) => String(label).trim()).filter(Boolean)
@@ -444,9 +451,7 @@ function canonicalStoryEntity(payload, rawPayload, projectId, storyId, current =
       checked: false,
     },
   ];
-  const validation = rawPayload.validation && typeof rawPayload.validation === "object"
-    ? rawPayload.validation
-    : current?.validation ?? { commands: ["npm test"] };
+  const validation = rawPayload.validation;
   const acceptanceCriteria = canonicalCriteria(payload.doneCriteria, acceptanceFallback);
 
   return {
@@ -457,15 +462,15 @@ function canonicalStoryEntity(payload, rawPayload, projectId, storyId, current =
     type: "story",
     project: projectId,
     title: payload.title,
-    objective: String(rawPayload.objective ?? current?.objective ?? payload.description ?? payload.title).trim()
-      || payload.title,
+    objective: payload.objective,
     description: payload.description,
+    scope: payload.scope,
+    non_scope: payload.nonScope,
     epic: current && (current.epic ?? null) === (payload.epic ?? null) ? current.epic : payload.epic,
     status: payload.status,
     priority: payload.priority,
-    risk: ["standard", "high"].includes(rawPayload.risk)
-      ? rawPayload.risk
-      : current?.risk ?? "standard",
+    risk: payload.risk,
+    ...(payload.rank === null ? {} : { rank: payload.rank }),
     execution_mode: payload.executionMode,
     story_type: payload.storyType,
     assignee: payload.assignee,
@@ -491,8 +496,7 @@ function canonicalEpicEntity(payload, rawPayload, projectId, epicId, current = n
     type: "epic",
     project: projectId,
     title: payload.title,
-    objective: String(rawPayload.objective ?? current?.objective ?? payload.description ?? payload.title).trim()
-      || payload.title,
+    objective: payload.objective,
     description: payload.description,
     labels: payload.labels,
   };
@@ -523,12 +527,15 @@ async function readMarkdownCollection(baseDir, kind, project) {
           title: data.title ?? id,
           objective: data.objective ?? "",
           description: data.description ?? "",
+          scope: coerceStringList(data.scope),
+          nonScope: coerceStringList(data.non_scope),
           projectId: project.id,
           projectName: project.name,
           status: statuses.includes(data.status) ? data.status : "backlog",
           epicId: data.epic ? String(data.epic) : null,
           priority: data.priority ?? "medium",
           risk: data.risk ?? "standard",
+          rank: Number.isSafeInteger(data.rank) ? data.rank : null,
           assignee: data.assignee ?? null,
           agentOwner: data.agent_owner ?? null,
           executionMode: executionModes.includes(data.execution_mode) ? data.execution_mode : "human",
@@ -932,6 +939,118 @@ function sendLegacyReadOnly(res, entityType) {
   });
 }
 
+function assertCompletePlanningContract(rawPayload, { creating = false } = {}) {
+  const missing = [];
+  const objective = String(rawPayload?.objective ?? "").trim();
+  const scope = coerceStringList(rawPayload?.scope);
+  const contextFiles = coerceStringList(rawPayload?.contextFiles);
+  const validationCommands = coerceStringList(rawPayload?.validation?.commands);
+  const acceptanceCriteria = coerceCriteria(rawPayload?.doneCriteria);
+
+  if (!objective) missing.push("objective");
+  if (scope.length === 0) missing.push("scope");
+  if (contextFiles.length === 0) missing.push("contextFiles");
+  if (validationCommands.length === 0) missing.push("validation.commands");
+  if (acceptanceCriteria.length === 0) missing.push("doneCriteria");
+  if (!["standard", "high"].includes(rawPayload?.risk)) missing.push("risk");
+
+  if (missing.length > 0) {
+    throw new DomainError(
+      "planning_contract_incomplete",
+      "La historia necesita objetivo, scope, riesgo, contexto, validación y aceptación antes de guardarse.",
+      { details: { missing }, status: 400 },
+    );
+  }
+
+  if (
+    creating && rawPayload?.executionMode !== "human" &&
+    (acceptanceCriteria.some((criterion) => criterion.checked) ||
+      coerceSubtasks(rawPayload?.subtasks).some((subtask) => subtask.done))
+  ) {
+    throw new DomainError(
+      "agent_execution_state_invalid",
+      "Una historia agéntica nueva no puede declarar aceptación o subtareas ya completadas.",
+      { status: 409 },
+    );
+  }
+}
+
+function assertCompleteEpicContract(rawPayload) {
+  if (!String(rawPayload?.objective ?? "").trim()) {
+    throw new DomainError(
+      "planning_contract_incomplete",
+      "La épica necesita un objetivo explícito antes de guardarse.",
+      { details: { missing: ["objective"] }, status: 400 },
+    );
+  }
+}
+
+function assertUiPlanningMutationAllowed(project, story) {
+  if (story.status !== "backlog") {
+    throw new DomainError(
+      "agent_workflow_required",
+      "La planificación solo se edita desde la UI mientras la historia está en backlog.",
+      { details: { status: story.status }, status: 409 },
+    );
+  }
+
+  const runtime = openRuntime(project.rootPath);
+  try {
+    const coordination = runtime.getCoordinationState(story.id);
+    if (coordination.claim) {
+      throw new DomainError(
+        "active_claim_protected",
+        "La historia tiene un claim activo. Usa la CLI y su fencing token o libera el intento primero.",
+        { details: { attemptId: coordination.attempt?.id }, status: 409 },
+      );
+    }
+  } finally {
+    runtime.close();
+  }
+}
+
+function assertUiChecklistMutationAllowed(project, story, operation) {
+  assertUiPlanningMutationAllowed(project, story);
+  if (story.executionMode !== "human" && operation !== "ready") {
+    throw new DomainError(
+      "agent_workflow_required",
+      "Los criterios y subtareas de trabajo agéntico se completan con local-kanban check.",
+      { details: { executionMode: story.executionMode }, status: 409 },
+    );
+  }
+}
+
+function assertAgentExecutionProgressPreserved(current, next) {
+  if (current.execution_mode === "human") {
+    return;
+  }
+  const currentAcceptance = new Map(
+    (current.acceptance_criteria ?? []).map((criterion) => [criterion.id, Boolean(criterion.checked)]),
+  );
+  const acceptanceChanged = (next.acceptance_criteria ?? []).some(
+    (criterion) => Boolean(criterion.checked) !== (currentAcceptance.get(criterion.id) ?? false),
+  ) || (current.acceptance_criteria ?? []).some(
+    (criterion) => criterion.checked &&
+      !(next.acceptance_criteria ?? []).some((candidate) => candidate.id === criterion.id && candidate.checked),
+  );
+  const currentSubtasks = new Map(
+    (current.subtasks ?? []).map((subtask) => [subtask.id, Boolean(subtask.done)]),
+  );
+  const subtasksChanged = (next.subtasks ?? []).some(
+    (subtask) => Boolean(subtask.done) !== (currentSubtasks.get(subtask.id) ?? false),
+  ) || (current.subtasks ?? []).some(
+    (subtask) => subtask.done &&
+      !(next.subtasks ?? []).some((candidate) => candidate.id === subtask.id && candidate.done),
+  );
+  if (acceptanceChanged || subtasksChanged) {
+    throw new DomainError(
+      "agent_workflow_required",
+      "La aceptación y las subtareas agénticas se completan con local-kanban check.",
+      { status: 409 },
+    );
+  }
+}
+
 async function tryCanonicalTransition(req, res) {
   const { projectId, storyId } = req.params;
   const project = await getProjectConfig(projectId);
@@ -967,6 +1086,14 @@ async function tryCanonicalTransition(req, res) {
   }
 
   try {
+    if (status !== found.story.status) {
+      throw new DomainError(
+        "agent_workflow_required",
+        "Las transiciones de estado se ejecutan mediante la CLI de Local Kanban.",
+        { details: { from: found.story.status, to: status }, status: 409 },
+      );
+    }
+    assertUiPlanningMutationAllowed(project, found.story);
     const commandResult = await transitionStoryCommand({
       project,
       storyId,
@@ -974,7 +1101,7 @@ async function tryCanonicalTransition(req, res) {
       nextStatus: status,
       nextEpic: epicId ?? null,
       actor: "human-ui",
-      actorRole: "orchestrator",
+      actorRole: "human",
       idempotencyKey: idempotencyKey.trim(),
     });
     scheduleBroadcast();
@@ -1028,6 +1155,7 @@ app.post(
         return sendLegacyReadOnly(res, "story");
       }
       const projectConfig = await getProjectConfig(projectId);
+      assertUiChecklistMutationAllowed(projectConfig, result.story, criteriaType);
       const commandResult = await toggleStoryCriterionCommand({
         project: canonicalProject(projectConfig),
         storyId,
@@ -1062,6 +1190,7 @@ app.post("/api/projects/:projectId/stories/:storyId/subtasks/:subtaskIndex/toggl
       return sendLegacyReadOnly(res, "story");
     }
     const projectConfig = await getProjectConfig(projectId);
+    assertUiChecklistMutationAllowed(projectConfig, result.story, "subtask");
     const commandResult = await toggleStorySubtaskCommand({
       project: canonicalProject(projectConfig),
       storyId,
@@ -1086,6 +1215,7 @@ app.post("/api/projects/:projectId/epics", async (req, res) => {
       return res.status(404).json({ error: "Proyecto no encontrado." });
     }
 
+    assertCompleteEpicContract(req.body ?? {});
     const payload = sanitizeEpicPayload(req.body ?? {}, projectId);
     const epicId = payload.id ?? `EPI-${toSlug(payload.title)}`;
     const commandResult = await createEpicCommand({
@@ -1119,6 +1249,17 @@ app.put("/api/projects/:projectId/epics/:epicId", async (req, res) => {
     if (existing.schemaVersion !== 1) {
       return sendLegacyReadOnly(res, "epic");
     }
+    const activeStory = project.stories.find(
+      (story) => story.epicId === epicId && story.coordination?.claim,
+    );
+    if (activeStory) {
+      throw new DomainError(
+        "active_claim_protected",
+        "No se modifica una épica mientras contiene trabajo reclamado.",
+        { details: { storyId: activeStory.id }, status: 409 },
+      );
+    }
+    assertCompleteEpicContract(req.body ?? {});
     const projectDocument = canonicalProject(projectConfig);
     const current = await readCanonicalEpic(projectDocument, epicId);
     const payload = sanitizeEpicPayload({ ...req.body, id: epicId }, projectId);
@@ -1152,6 +1293,7 @@ app.post("/api/projects/:projectId/stories", async (req, res) => {
       return res.status(404).json({ error: "Proyecto no encontrado." });
     }
 
+    assertCompletePlanningContract(req.body ?? {}, { creating: true });
     const payload = sanitizeStoryPayload(req.body ?? {}, projectId);
     const storyId = payload.id ?? `STO-${toSlug(payload.title)}`;
     const commandResult = await createStoryCommand({
@@ -1183,6 +1325,8 @@ app.put("/api/projects/:projectId/stories/:storyId", async (req, res) => {
     if (existing.story.schemaVersion !== 1) {
       return sendLegacyReadOnly(res, "story");
     }
+    assertUiPlanningMutationAllowed(projectConfig, existing.story);
+    assertCompletePlanningContract(req.body ?? {});
     const projectDocument = canonicalProject(projectConfig);
     const current = await readCanonicalStory(projectDocument, storyId);
     const payload = sanitizeStoryPayload({ ...req.body, id: storyId }, projectId);
@@ -1192,6 +1336,7 @@ app.put("/api/projects/:projectId/stories/:storyId", async (req, res) => {
       });
     }
     const nextStory = canonicalStoryEntity(payload, req.body ?? {}, projectId, storyId, current.entity);
+    assertAgentExecutionProgressPreserved(current.entity, nextStory);
     const commandResult = await updateStoryCommand({
       project: projectDocument,
       storyId,

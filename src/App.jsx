@@ -142,6 +142,11 @@ export default function App() {
 
   const selectedProject =
     data.projects.find((project) => project.id === selectedProjectId) ?? data.projects[0] ?? null;
+  const projectHealthLabel = selectedProject?.health === "degraded"
+    ? "Requiere atención"
+    : selectedProject?.health === "unavailable"
+      ? "No disponible"
+      : "Sincronizado";
   const liveSelectedStory =
     selectedStory && selectedProject
       ? selectedProject.stories.find((story) => story.id === selectedStory.id) ?? selectedStory
@@ -495,6 +500,12 @@ export default function App() {
       return;
     }
 
+    if (draggedStory.status !== "backlog" || nextStatus !== "backlog") {
+      setDraggedStory(null);
+      setError("Las transiciones de estado se realizan con la CLI de Local Kanban.");
+      return;
+    }
+
     setError("");
 
     const nextEpicTitle = normalizedEpicId
@@ -822,7 +833,7 @@ export default function App() {
               <div className="topbar__metric topbar__metric--status">
                 <span className={`sync-indicator ${isPending ? "is-busy" : ""}`} />
                 <div>
-                  <strong>{isLoading ? "Cargando…" : isPending ? "Sincronizando…" : "Sincronizado"}</strong>
+                  <strong>{isLoading ? "Cargando…" : isPending ? "Sincronizando…" : projectHealthLabel}</strong>
                   <span>Estado local</span>
                 </div>
               </div>
@@ -835,6 +846,13 @@ export default function App() {
             <div className="error-banner" data-testid="project-unavailable">
               No se puede abrir este proyecto. Revisa su <code>rootPath</code> en
               <code> config/projects.json</code>. Detalle: {selectedProject.availabilityError?.message}
+            </div>
+          ) : null}
+
+          {selectedProject?.health === "degraded" ? (
+            <div className="warning-banner" data-testid="project-degraded">
+              <strong>Proyecto degradado.</strong> Hay {selectedProject.quarantines.length} documento(s)
+              en cuarentena. Revísalos antes de confiar en el flujo agéntico.
             </div>
           ) : null}
 
