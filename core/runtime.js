@@ -1117,6 +1117,40 @@ export class RuntimeStore {
       }));
   }
 
+  quarantineEntity(input) {
+    const entityType = requireText(input.entityType, "entityType");
+    const entityId = requireText(input.entityId, "entityId");
+    const reason = requireText(input.reason, "reason");
+    const timestamp = toTimestamp(input.now);
+    return this.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO entity_quarantine (
+             entity_type, entity_id, reason, details_json, detected_at, resolved_at, resolved_by
+           ) VALUES (?, ?, ?, ?, ?, NULL, NULL)
+           ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+             reason = excluded.reason,
+             details_json = excluded.details_json,
+             detected_at = excluded.detected_at,
+             resolved_at = NULL,
+             resolved_by = NULL`,
+        )
+        .run(entityType, entityId, reason, JSON.stringify(input.details ?? {}), timestamp);
+      this.appendAudit(
+        {
+          eventType: "document_quarantined",
+          entityType,
+          entityId,
+          actor: input.actor ?? "watcher",
+          payload: { reason, ...(input.details ?? {}) },
+          createdAt: timestamp,
+        },
+        false,
+      );
+      return { status: "quarantined", entityType, entityId, reason };
+    });
+  }
+
   appendAudit(event, withinTransaction = true) {
     const insert = () => {
       this.db

@@ -44,13 +44,15 @@ export async function reconcileProjectDocuments(project, runtime, options = {}) 
           }),
         );
       } catch (error) {
-        results.push({
-          status: "invalid",
+        const entityId = path.basename(filePath, ".md");
+        runtime.quarantineEntity({
           entityType,
-          filePath,
-          error: error.code ?? "invalid_document",
-          message: error.message,
+          entityId,
+          reason: "invalid_document",
+          actor: options.actor ?? "watcher",
+          details: { filePath, error: error.code ?? "invalid_document", message: error.message },
         });
+        results.push({ status: "quarantined", entityType, entityId, reason: "invalid_document" });
       }
     }
   }
