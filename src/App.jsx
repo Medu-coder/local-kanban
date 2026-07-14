@@ -94,6 +94,7 @@ export default function App() {
   const pendingEditorActionRef = useRef(null);
   const refreshPromiseRef = useRef(null);
   const refreshQueuedRef = useRef(false);
+  const initialDeepLinkRef = useRef(new URLSearchParams(window.location.search));
 
   useEffect(() => {
     window.localStorage.setItem(DENSITY_STORAGE_KEY, density);
@@ -113,7 +114,15 @@ export default function App() {
         }
 
         setData(payload);
-        setSelectedProjectId((current) => current ?? payload.projects[0]?.id ?? null);
+        const deepLink = initialDeepLinkRef.current;
+        const linkedProject = payload.projects.find((project) => project.id === deepLink.get("project"));
+        const initialProject = linkedProject ?? payload.projects[0] ?? null;
+        setSelectedProjectId((current) => current ?? initialProject?.id ?? null);
+        const linkedStory = initialProject?.stories.find((story) => story.id === deepLink.get("story"));
+        if (linkedStory) {
+          setSelectedStory(linkedStory);
+          setSidePanelMode("detail");
+        }
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError.message);
@@ -141,6 +150,24 @@ export default function App() {
     selectedEpic && selectedProject
       ? selectedProject.epics.find((epic) => epic.id === selectedEpic.id) ?? selectedEpic
       : null;
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedProject?.id) url.searchParams.set("project", selectedProject.id);
+    else url.searchParams.delete("project");
+    if (liveSelectedStory?.id) {
+      url.searchParams.set("story", liveSelectedStory.id);
+      if (liveSelectedStory.coordination?.attempt?.id) {
+        url.searchParams.set("attempt", liveSelectedStory.coordination.attempt.id);
+      } else {
+        url.searchParams.delete("attempt");
+      }
+    } else {
+      url.searchParams.delete("story");
+      url.searchParams.delete("attempt");
+    }
+    window.history.replaceState(null, "", url);
+  }, [selectedProject?.id, liveSelectedStory?.id, liveSelectedStory?.coordination?.attempt?.id]);
 
   const visibleProject = useMemo(() => {
     if (!selectedProject) {

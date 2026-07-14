@@ -26,6 +26,13 @@ test("carga el proyecto y cierra el detalle al pinchar fuera", async ({ page }) 
   await expect(page.getByTestId("story-detail-panel")).toHaveCount(0);
 });
 
+test("abre una historia mediante deep link estable", async ({ page }) => {
+  await page.goto("/?project=sample-project&story=STO-001");
+  await expect(page.getByTestId("story-detail-panel")).toBeVisible();
+  await expect(page.getByTestId("story-detail-panel")).toContainText("STO-001");
+  await expect(page).toHaveURL(/project=sample-project.*story=STO-001/u);
+});
+
 test("crea una historia desde toolbar y la muestra en el tablero", async ({ page }) => {
   await page.getByTestId("create-story-button").click();
   await page.getByTestId("story-title-input").fill("Nueva historia E2E");
