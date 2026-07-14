@@ -86,6 +86,7 @@ Las historias usan IDs `STO-*`; las épicas, `EPI-*`. Readiness, bloqueos, claim
 npm run test:unit
 npm run test:skill
 npm run test:quality
+npm run test:dogfood
 npm run eval
 npm run benchmark
 npm run test:e2e
@@ -108,3 +109,4 @@ confirma además que la skill personal sigue enlazada al fichero canónico de es
 - [Skill canónica](skills/local-kanban/SKILL.md)
 - [Documento de mejoras técnicas](docs/AGENTIC_KANBAN_TECHNICAL_IMPROVEMENTS.md)
 - [Dogfooding y registro de desalineamientos](docs/DOGFOOD_ALIGNMENT_REPORT_2026-07-14.md)
+- [Segunda auditoría exhaustiva](docs/DOGFOOD_EXHAUSTIVE_REPORT_2026-07-14.md)
