@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-revision: 13
+revision: 15
 id: STO-PRODUCTION-CLEANUP
 type: story
 project: kanban-local
@@ -15,7 +15,7 @@ scope:
   - configuración de distribución
 non_scope: []
 epic: EPI-PRODUCTION-READINESS
-status: developing
+status: testing
 priority: high
 risk: high
 rank: 1
@@ -77,6 +77,27 @@ subtasks:
   - id: revisar-y-commitear-cambios
     title: Revisar y commitear cambios
     done: true
-updated_at: '2026-07-14T11:32:51.847Z'
+updated_at: '2026-07-14T11:47:26.327Z'
+evidence:
+  - id: evidence-4368fb90-c954-478d-a2fc-c2d8a2110ef8
+    type: test
+    story_id: STO-PRODUCTION-CLEANUP
+    attempt_id: f1cd807e-3d24-4ed7-96c5-c852b8817e16
+    commit: a46e90bd29cda63adac1c48e378c20f4e352aae7
+    command: 'npm run release:verify'
+    exit_code: 0
+    summary: Gate completo de producción superado
+    recorded_at: '2026-07-14T11:47:26.311Z'
+    actor: codex-root
+  - id: evidence-08eb3587-223f-4ebb-b926-f8c734ac3cc4
+    type: test
+    story_id: STO-PRODUCTION-CLEANUP
+    attempt_id: f1cd807e-3d24-4ed7-96c5-c852b8817e16
+    commit: a46e90bd29cda63adac1c48e378c20f4e352aae7
+    command: local-kanban doctor --json
+    exit_code: 0
+    summary: Gate completo de producción superado
+    recorded_at: '2026-07-14T11:47:26.311Z'
+    actor: codex-root
 ---
 
