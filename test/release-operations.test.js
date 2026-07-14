@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(testDir, "..");
+const require = createRequire(import.meta.url);
 
 test("el arranque de produccion no reconstruye, espera health y PM2 es dependencia de runtime", async () => {
   const pkg = JSON.parse(await fs.readFile(path.join(rootDir, "package.json"), "utf8"));
+  const ecosystem = require(path.join(rootDir, "ecosystem.config.cjs"));
+  const server = await fs.readFile(path.join(rootDir, "server", "index.js"), "utf8");
+  const shutdownTimeoutMatch = server.match(
+    /forceExitTimer = setTimeout\(\(\) => process\.exit\(1\), ([\d_]+)\)/u,
+  );
 
   assert.doesNotMatch(pkg.scripts.start, /npm run build/u);
   assert.match(pkg.scripts.start, /check-production-build\.js.*pm2 startOrRestart/u);
@@ -16,6 +23,10 @@ test("el arranque de produccion no reconstruye, espera health y PM2 es dependenc
   assert.match(pkg.scripts.restart, /check-production-build\.js.*pm2 restart.*wait-for-health\.js/u);
   assert.equal(pkg.dependencies.pm2, "^7.0.3");
   assert.equal(pkg.devDependencies.pm2, undefined);
+  assert.ok(shutdownTimeoutMatch, "el servidor debe declarar su timeout de cierre forzado");
+  const shutdownTimeout = Number(shutdownTimeoutMatch[1].replaceAll("_", ""));
+  assert.equal(ecosystem.apps[0].kill_timeout, 12_000);
+  assert.ok(ecosystem.apps[0].kill_timeout > shutdownTimeout);
 });
 
 test("el arranque exige bundle y configuración local válidos", async () => {

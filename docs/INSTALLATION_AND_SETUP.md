@@ -124,6 +124,8 @@ En macOS también puede hacerse doble clic en `Launch_Kanban.command`: construye
 actual, inicia/reinicia PM2, espera con límite al health endpoint y solo entonces abre el
 navegador. `Stop_Kanban.command` detiene el proceso. PM2 lo mantiene vivo mientras la sesión
 local está activa, pero este repositorio no instala arranque automático tras reiniciar macOS.
+PM2 concede 12 segundos al cierre ordenado antes de forzarlo, por encima de los 10 segundos
+que el servidor reserva para completar la desconexión de clientes y watchers.
 
 `start` y `restart` no terminan correctamente hasta que `/api/health` devuelve un payload
 válido. El sondeo tiene 60 intentos, intervalo de un segundo y timeout de petición de un
