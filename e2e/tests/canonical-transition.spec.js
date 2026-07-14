@@ -54,6 +54,29 @@ test.beforeEach(async () => {
   );
 });
 
+test("timeline rechaza una historia inexistente y conserva la consulta canónica", async ({ request }) => {
+  const missing = await request.get(
+    "/api/projects/sample-project/stories/STO-NOT-FOUND/timeline",
+  );
+  expect(missing.status()).toBe(404);
+  expect(missing.headers()["content-type"]).toContain("application/json");
+  expect(await missing.json()).toMatchObject({
+    code: "story_not_found",
+    detail: "Historia no encontrada.",
+    details: { entityId: "STO-NOT-FOUND" },
+  });
+
+  const existing = await request.get(
+    "/api/projects/sample-project/stories/STO-900/timeline",
+  );
+  expect(existing.status()).toBe(200);
+  expect(await existing.json()).toMatchObject({
+    storyId: "STO-900",
+    coordination: { operationalStatus: "unclaimed" },
+    events: [],
+  });
+});
+
 test("HTTP v1 reserva estados a la CLI y permite reorganizar backlog con CAS", async ({ request }) => {
   const endpoint = "/api/projects/sample-project/stories/STO-900/move";
   const blocked = await request.post(endpoint, {

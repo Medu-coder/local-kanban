@@ -1521,6 +1521,7 @@ app.get("/api/projects/:projectId/stories/:storyId/timeline", async (req, res) =
   try {
     const project = await getProjectConfig(req.params.projectId);
     if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
+    await readCanonicalStory(canonicalProject(project), req.params.storyId);
     runtime = openRuntime(project.rootPath);
     const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
     return res.json({
