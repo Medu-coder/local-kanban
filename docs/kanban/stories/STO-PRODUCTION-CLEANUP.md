@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-revision: 2
+revision: 13
 id: STO-PRODUCTION-CLEANUP
 type: story
 project: kanban-local
@@ -24,25 +24,25 @@ acceptance_criteria:
   - id: no-quedan-documentos-de-trabajo-u-obsoletos-versio
     label: No quedan documentos de trabajo u obsoletos versionados
     kind: manual
-    checked: false
+    checked: true
   - id: no-quedan-artefactos-locales-versionados-ni-legacy
     label: No quedan artefactos locales versionados ni legacy sin uso
     kind: manual
-    checked: false
+    checked: true
   - id: la-documentacion-canonica-describe-con-precision-i
     label: >-
       La documentación canónica describe con precisión instalación operación
       arquitectura y verificación
     kind: manual
-    checked: false
+    checked: true
   - id: la-suite-completa-de-release-supera-todos-los-gate
     label: La suite completa de release supera todos los gates
     kind: manual
-    checked: false
+    checked: true
   - id: el-diff-final-no-incluye-cambios-ajenos-no-relacio
     label: El diff final no incluye cambios ajenos no relacionados
     kind: manual
-    checked: false
+    checked: true
 readiness_criteria: []
 dependencies: []
 context_files:
@@ -61,22 +61,22 @@ validation:
 subtasks:
   - id: inventariar-documentacion-y-artefactos
     title: Inventariar documentación y artefactos
-    done: false
+    done: true
   - id: detectar-referencias-y-codigo-legacy
     title: Detectar referencias y código legacy
-    done: false
+    done: true
   - id: aplicar-limpieza-y-consolidacion
     title: Aplicar limpieza y consolidación
-    done: false
+    done: true
   - id: actualizar-documentacion-canonica
     title: Actualizar documentación canónica
-    done: false
+    done: true
   - id: ejecutar-verificacion-completa
     title: Ejecutar verificación completa
-    done: false
+    done: true
   - id: revisar-y-commitear-cambios
     title: Revisar y commitear cambios
-    done: false
+    done: true
 updated_at: '2026-07-14T11:32:51.847Z'
 ---
 
