@@ -15,7 +15,7 @@ Local Kanban separa dos ámbitos:
 
 Los documentos `docs/kanban/epics/*.md` y `docs/kanban/stories/*.md` son la representación durable. Su frontmatter cumple los JSON Schema versionados de `schemas/v1/`; el nombre del fichero coincide con el ID de la entidad.
 
-`.local-kanban/runtime.sqlite` es un runtime reconstruible e ignorado por Git. Conserva:
+`.local-kanban/runtime.sqlite` es un runtime local e ignorado por Git. Conserva:
 
 - operaciones e idempotencia;
 - revisiones, hashes y journal de escritura;
@@ -23,7 +23,11 @@ Los documentos `docs/kanban/epics/*.md` y `docs/kanban/stories/*.md` son la repr
 - checkpoints, bloqueos y evidencias;
 - auditoría y cuarentenas.
 
-SQLite no sustituye a los Markdown como resultado durable. Si aparece una divergencia o un documento inválido, la entidad se aísla en cuarentena en vez de normalizarse o sobrescribirse silenciosamente.
+SQLite no sustituye a los Markdown como resultado durable. Su esquema y el índice de los
+documentos pueden regenerarse, pero claims, intentos, auditoría, evidencias y operaciones no
+se reconstruyen íntegramente desde Markdown. Por eso debe incluirse en cualquier backup que
+pretenda conservar el historial operativo. Si aparece una divergencia o un documento inválido,
+la entidad se aísla en cuarentena en vez de normalizarse o sobrescribirse silenciosamente.
 
 ## Núcleo compartido
 
@@ -55,9 +59,19 @@ El orquestador es el único rol que integra y cierra. Los especialistas operan u
 
 `src/` contiene una SPA React con tablero, grafo, detalle, edición, timeline y acciones administrativas acotadas. La UI es un control plane humano, no una segunda interfaz de ejecución para agentes: permite planificar contratos completos mientras una historia permanece en `backlog` y sin claim, pero reserva transiciones, checks y trabajo reclamado a la CLI con attempt y fencing. La reorganización por drag solo cambia la épica de historias no reclamadas en backlog. Las excepciones humanas destructivas requieren confirmación, resumen y siguiente acción auditables.
 
-CLI, `/api/health`, `/api/projects` y UI comparten un contrato de degradación con causa, impacto, acción, comando y criterio de verificación. Una degradación `fail` bloquea `next`, `claim` y la entidad afectada; un warning mantiene el flujo con su garantía reducida visible. La UI muestra frescura SSE y nunca presenta una desconexión como sincronizada. La reconciliación detecta documentos inválidos, divergentes, concurrentes, pendientes y desaparecidos; escaneos repetidos no duplican el evento de cuarentena.
+CLI, `/api/health`, `/api/projects` y UI comparten un contrato de degradación con causa,
+impacto, acción, comando y criterio de verificación. Una degradación bloqueante congela las
+mutaciones del proyecto completo para evitar escrituras parciales; `release`, resolución de
+bloqueos y reconciliación siguen disponibles como caminos explícitos de recuperación. Un
+warning mantiene el flujo con su garantía reducida visible. La UI muestra frescura SSE y
+nunca presenta una desconexión como sincronizada. La reconciliación detecta documentos
+inválidos, divergentes, concurrentes, pendientes y desaparecidos; escaneos repetidos no
+duplican el evento de cuarentena.
 
-El listener de producción se limita por defecto a `127.0.0.1:4010`. No hay autenticación ni TLS; el servidor rechaza otros hosts salvo opt-in explícito con `LOCAL_KANBAN_ALLOW_REMOTE=1`, que solo debe usarse detrás de una protección externa adecuada.
+El listener de producción se limita por defecto a `127.0.0.1:4010`. No hay autenticación ni
+TLS; la API valida `Host` y `Origin` contra loopback para mitigar accesos externos y DNS
+rebinding. `LOCAL_KANBAN_ALLOW_REMOTE=1` desactiva esa barrera y solo debe usarse detrás de
+autenticación, TLS y filtrado de red externos.
 
 ## Despliegue local
 
@@ -77,4 +91,6 @@ La calidad se comprueba por capas:
 - E2E Playwright de HTTP, UI y sincronización;
 - build, auditoría de dependencias y secret scanning en CI.
 
-El gate local completo es `npm run release:verify`. La definición ejecutable de los comandos vive en `package.json` y `.github/workflows/ci.yml`.
+El gate local completo es `npm run release:verify`, con umbrales mínimos de 85 % de líneas,
+65 % de ramas y 90 % de funciones. La matriz se documenta en [TESTING.md](TESTING.md); la
+definición ejecutable vive en `package.json` y `.github/workflows/ci.yml`.

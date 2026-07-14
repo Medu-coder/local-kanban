@@ -117,6 +117,11 @@ npm run restart
 npm run stop
 ```
 
+En macOS también puede hacerse doble clic en `Launch_Kanban.command`: construye el checkout
+actual, inicia/reinicia PM2, espera con límite al health endpoint y solo entonces abre el
+navegador. `Stop_Kanban.command` detiene el proceso. PM2 lo mantiene vivo mientras la sesión
+local está activa, pero este repositorio no instala arranque automático tras reiniciar macOS.
+
 Después de `start` o `restart`, verifica que PM2 terminó de levantar el proceso:
 
 ```bash
@@ -124,14 +129,17 @@ npm run status
 curl --fail http://127.0.0.1:4010/api/health
 ```
 
-El endpoint usa el mismo diagnóstico que la UI: devuelve `health: degraded` ante rutas
+El endpoint alimenta el diagnóstico visible de la UI: devuelve `health: degraded` ante rutas
 inaccesibles, cuarentenas o cierres `done` sin gate canónico, e incluye por proyecto causa,
 impacto, siguiente acción y criterio de verificación. La UI sigue disponible en modo consulta
-y permite seleccionar cualquier otro proyecto sano.
+y permite seleccionar cualquier otro proyecto sano. `local-kanban doctor` añade además los
+checks locales de Git, worktrees e instalación de la skill que no pertenecen al servidor web.
 
 La UI no es necesaria para que los agentes operen; sirve para observación y control humano.
 El servicio escucha en `127.0.0.1:4010` por defecto. No cambies `HOST` para exponerlo
 a la red: la API no incorpora autenticación ni TLS y está diseñada para un único usuario local.
+También rechaza `Host` y `Origin` no loopback. No uses `LOCAL_KANBAN_ALLOW_REMOTE=1` salvo que
+otra capa aporte autenticación, TLS y filtrado de red.
 
 ## Actualizar la instalación
 
@@ -164,6 +172,44 @@ comprobación local separada. Las evaluaciones son deterministas y cubren las in
 benchmark usa `fixtures/long-project/scenario.json`; informa rendimiento para detectar
 regresiones, pero su gate estable valida el resultado semántico, no un umbral temporal
 dependiente de la máquina.
+
+Consulta [TESTING.md](TESTING.md) para la matriz completa, los umbrales de cobertura y la
+equivalencia exacta con CI.
+
+## Backup y restauración
+
+Para conservar tanto los contratos versionados como el historial operativo, detén primero el
+servicio y cualquier agente activo, y copia juntos:
+
+- el repositorio consumidor, incluido `docs/kanban/`;
+- su `.local-kanban/runtime.sqlite`;
+- `config/projects.json` de este checkout si quieres conservar el registro de la UI.
+
+`runtime.sqlite` se crea al abrir por primera vez una operación que necesita runtime. Su
+esquema puede regenerarse, pero los claims, intentos, auditoría y evidencias perdidos no pueden
+deducirse íntegramente de los Markdown. Tras restaurar rutas, ejecuta en cada consumidor:
+
+```bash
+local-kanban init
+local-kanban validate
+local-kanban doctor
+```
+
+No copies una base mientras existen writers activos ni restaures solo uno de los dos lados de
+una operación; eso produciría una divergencia que deberá reconciliarse explícitamente.
+
+## Desinstalación
+
+```bash
+cd /ruta/a/local-kanban
+npm run stop
+npm unlink --global local-kanban
+rm ~/.agents/skills/local-kanban
+```
+
+Antes de borrar el checkout, conserva o elimina conscientemente `config/projects.json`. En cada
+proyecto consumidor, `docs/kanban/` es trabajo versionado y no debe borrarse por desinstalar la
+herramienta. `.local-kanban/` solo puede eliminarse si aceptas perder su historial operativo.
 
 ## Administración humana excepcional
 
@@ -216,7 +262,7 @@ aportar `--reason`; `active_claim` exige resolver o liberar el intento; `pending
 exige recovery; `missing_document` exige restaurar el fichero o escalar un borrado explícito.
 No existe una resolución segura mediante edición directa de `.local-kanban/runtime.sqlite`.
 
-Para datos de prueba legacy sin valor histórico:
+Solo para fixtures de prueba antiguos, sin valor histórico:
 
 ```bash
 local-kanban migrate-legacy --validation "git diff --check" --risk standard \

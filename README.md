@@ -82,7 +82,9 @@ no reclamadas dentro de `backlog`. Las transiciones, checks y mutaciones durante
 se realizan exclusivamente mediante `local-kanban` con claim, attempt y fencing vigentes. Las
 acciones excepcionales de abandono o resolución requieren confirmación explícita y quedan auditadas.
 
-La instancia de producción local escucha en `127.0.0.1:4010`. No expongas el servidor en una interfaz de red: la API no incorpora autenticación ni TLS y su modelo de confianza es exclusivamente local.
+La instancia de producción local escucha en `127.0.0.1:4010`. Además, la API rechaza
+hosts y orígenes que no sean loopback. No expongas el servidor en una interfaz de red: no
+incorpora autenticación ni TLS y su modelo de confianza es exclusivamente local.
 
 ## Modelo funcional
 
@@ -96,17 +98,15 @@ Las historias usan IDs `STO-*`; las épicas, `EPI-*`. Readiness, bloqueos, claim
 
 ## Verificación
 
+El gate completo y reproducible es:
+
 ```bash
-npm run test:unit
-npm run test:skill
-npm run skill:smoke
-npm run test:quality
-npm run test:dogfood
-npm run eval
-npm run benchmark
-npm run test:e2e
-npm run build
+npm run release:verify
 ```
+
+Incluye checks estáticos, cobertura con umbrales, evaluaciones, benchmark, auditoría de
+dependencias, build, E2E y una instalación aislada de la skill. La matriz, el propósito de
+cada capa y los comandos parciales están en [docs/TESTING.md](docs/TESTING.md).
 
 La suite E2E usa un workspace aislado en `.e2e/` y no depende de los proyectos locales reales del usuario.
 `eval` comprueba las invariantes agénticas críticas (claims concurrentes, leases,
@@ -122,4 +122,5 @@ de la skill. `npm run skill:verify` comprueba por separado el symlink personal d
 - [Instalación y setup](docs/INSTALLATION_AND_SETUP.md)
 - [Preparar un proyecto consumidor](docs/PROJECT_KANBAN_SETUP.md)
 - [Arquitectura as-built](docs/ARCHITECTURE.md)
+- [Pruebas y gates de release](docs/TESTING.md)
 - [Skill canónica](skills/local-kanban/SKILL.md)

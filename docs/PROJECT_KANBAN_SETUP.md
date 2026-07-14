@@ -15,7 +15,9 @@ TU_PROYECTO/
     └── stories/
 ```
 
-Los Markdown son la representación durable y versionable. SQLite conserva coordinación operativa local y puede reconstruirse; no debe commitearse ni editarse manualmente.
+Los Markdown son la representación durable y versionable. SQLite conserva coordinación
+operativa local; su esquema puede regenerarse, pero su historial no. No debe commitearse ni
+editarse manualmente y debe respaldarse si se quieren conservar claims, intentos y auditoría.
 
 ## 1. Comprobar la instalación
 
@@ -91,7 +93,8 @@ La instalación personal de la skill se verifica por separado, desde el reposito
 4. No editar directamente Markdown, SQLite, `config/projects.json` ni invocar HTTP como atajo.
 5. No inventar comandos o estados cuando una operación todavía no exista; detener la mutación y comunicar el bloqueo.
 6. Mantener contexto compacto, pero conservar objetivo, scope, restricciones, gates y evidencia necesarios.
-7. El especialista entrega en `verifying`; solo el orquestador integra, valida el resultado integrado y marca `done`.
+7. El especialista entrega la historia funcional en `testing`; el intento queda operacionalmente
+   en `verifying`. Solo el orquestador integra, valida el resultado integrado y marca `done`.
 
 ## Reglas durables básicas
 
