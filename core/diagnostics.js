@@ -3,9 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 function check(id, status, summary, details = null, action = null) {
   return { id, status, summary, details, action };
@@ -132,7 +134,7 @@ async function inspectSkill(options = {}) {
   if (options.checkSkill === false) {
     return check("skill", "pass", "Comprobación de skill omitida explícitamente.", { skipped: true });
   }
-  const source = options.skillSource ?? path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "skills", "local-kanban");
+  const source = options.skillSource ?? path.resolve(moduleDir, "..", "skills", "local-kanban");
   const target = options.skillTarget ?? path.join(os.homedir(), ".agents", "skills", "local-kanban");
   const targetStat = await lstatOrNull(target);
   if (!targetStat) {
