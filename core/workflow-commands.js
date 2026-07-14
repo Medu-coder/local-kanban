@@ -14,7 +14,7 @@ import {
   toggleStorySubtaskCommand,
   updateStoryCommand,
 } from "./entity-commands.js";
-import { prepareWorktree } from "./git.js";
+import { prepareWorktree, removeWorktree } from "./git.js";
 import { resolveProjectPaths } from "./paths.js";
 import { getRegisteredProject } from "./project.js";
 import { openRuntime } from "./runtime.js";
@@ -422,6 +422,31 @@ export async function prepareStoryWorktreeWorkflow(options) {
     storyId: envelope.storyId,
     attemptId: envelope.attemptId,
     baseCommit: options.baseCommit ?? "HEAD",
+  });
+}
+
+export async function removeStoryWorktreeWorkflow(options) {
+  const { paths } = await storyContext(options);
+  const attemptId = requireText(options.attemptId, "attemptId");
+  const runtime = openRuntime(paths.rootPath);
+  try {
+    const state = runtime.getCoordinationState(options.storyId);
+    if (state.claim) {
+      if (state.claim.attemptId !== attemptId) {
+        throw new DomainError("claim_owned_by_other", "El worktree pertenece a otro intento activo.", {
+          status: 409,
+        });
+      }
+      runtime.verifyClaim(claimEnvelope(options));
+    }
+  } finally {
+    runtime.close();
+  }
+  return removeWorktree({
+    rootPath: paths.rootPath,
+    storyId: options.storyId,
+    attemptId,
+    deleteBranch: Boolean(options.deleteBranch),
   });
 }
 

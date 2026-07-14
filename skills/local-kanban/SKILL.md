@@ -58,10 +58,11 @@ local-kanban check STO-... --attempt-id ID --fencing-token N --subtask ID --json
 local-kanban check STO-... --attempt-id ID --fencing-token N --criterion ID --json
 local-kanban validate STO-... --attempt-id ID --fencing-token N --json
 local-kanban complete STO-... --attempt-id ID --fencing-token N --role orchestrator --json
+local-kanban worktree-remove STO-... --attempt-id ID --delete-branch --json
 local-kanban release STO-... --attempt-id ID --fencing-token N --outcome released --json
 ```
 
-Crear trabajo nuevo mediante `create-epic` y `create-story`; no generar sus Markdown manualmente. Conservar el `attemptId` y `fencingToken` devueltos por `claim`; toda mutación posterior de ejecución los exige y renueva el lease. No inventarlos ni reutilizarlos en otra historia. Usar `show` para regenerar la cápsula tras resume. Marcar únicamente trabajo realmente terminado con `check`. Resolver un bloqueo con `resolve` antes de continuar y usar `release` para handoff, abandono o recuperación explícita. `validate` sin `STORY_ID` valida globalmente los documentos del proyecto; con `STORY_ID` ejecuta los comandos declarados por la historia, registra evidencia durable vinculada al commit y al intento, y entrega en `testing/verifying`. Solo el orquestador usa `complete`, después de revisar el resultado y los gates.
+Crear trabajo nuevo mediante `create-epic` y `create-story`; no generar sus Markdown manualmente. Conservar el `attemptId` y `fencingToken` devueltos por `claim`; toda mutación posterior de ejecución los exige y renueva el lease. No inventarlos ni reutilizarlos en otra historia. Usar `show` para regenerar la cápsula tras resume. Marcar únicamente trabajo realmente terminado con `check`; repetirlo es seguro y no desmarca. Resolver un bloqueo con `resolve` antes de continuar y usar `release` para handoff, abandono o recuperación explícita. `validate` sin `STORY_ID` valida globalmente los documentos del proyecto; con `STORY_ID` ejecuta los comandos declarados por la historia, registra evidencia durable vinculada al commit y al intento, y entrega en `testing/verifying`. Solo el orquestador usa `complete`, después de integrar: el comando vuelve a validar sobre el checkout principal, registra evidencia del commit integrado y después cierra. Retirar el worktree limpio con `worktree-remove` tras el cierre.
 
 ## Flujo del orquestador
 

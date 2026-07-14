@@ -80,3 +80,33 @@ export async function inspectWorktree(rootPath, worktreePath) {
   ]);
   return { path: safePath, head, dirty: Boolean(status), status };
 }
+
+export async function removeWorktree({ rootPath, storyId, attemptId, deleteBranch = false }) {
+  assertSafeEntityId(storyId, "story");
+  const safeAttempt = safeAttemptId(attemptId);
+  const canonicalRoot = await fs.realpath(rootPath);
+  const worktreePath = path.join(
+    canonicalRoot,
+    ".local-kanban",
+    "worktrees",
+    `${storyId.toLowerCase()}-${safeAttempt}`,
+  );
+  await assertNoSymlinkComponents(canonicalRoot, worktreePath);
+  const existing = (await listWorktrees(canonicalRoot)).find((item) => item.path === worktreePath);
+  if (!existing) return { path: worktreePath, removed: false, branchDeleted: false };
+  const inspected = await inspectWorktree(canonicalRoot, worktreePath);
+  if (inspected.dirty) {
+    throw new DomainError("worktree_dirty", "El worktree conserva cambios sin commit.", {
+      details: { worktreePath, status: inspected.status },
+      status: 409,
+    });
+  }
+  await git(canonicalRoot, ["worktree", "remove", worktreePath]);
+  let branchDeleted = false;
+  if (deleteBranch && existing.branch) {
+    const branch = existing.branch.replace(/^refs\/heads\//u, "");
+    await git(canonicalRoot, ["branch", "-D", branch]);
+    branchDeleted = true;
+  }
+  return { path: worktreePath, removed: true, branchDeleted };
+}

@@ -16,6 +16,7 @@ import {
   createStoryWorkflow,
   nextStoriesCommand,
   prepareStoryWorktreeWorkflow,
+  removeStoryWorktreeWorkflow,
   releaseStoryWorkflow,
   resolveBlockWorkflow,
   showStoryWorkflow,
@@ -43,6 +44,8 @@ Uso:
   local-kanban check STORY_ID --attempt-id ID --fencing-token N
     (--criterion ID | --subtask ID) [--json]
   local-kanban worktree STORY_ID --attempt-id ID --fencing-token N [--base-commit REF] [--json]
+  local-kanban worktree-remove STORY_ID --attempt-id ID [--fencing-token N]
+    [--delete-branch] [--json]
   local-kanban release STORY_ID --attempt-id ID --fencing-token N
     [--outcome released|failed|abandoned|stale] [--json]
   local-kanban validate [STORY_ID --attempt-id ID --fencing-token N]
@@ -294,6 +297,16 @@ async function run() {
     return;
   }
 
+  if (command === "worktree-remove") {
+    const result = await removeStoryWorktreeWorkflow({
+      ...workflowOptions(options),
+      storyId: options._[0],
+      deleteBranch: options.deleteBranch,
+    });
+    output(result, options.json);
+    return;
+  }
+
   if (command === "release") {
     const result = await releaseStoryWorkflow({
       ...workflowOptions(options),
@@ -313,6 +326,7 @@ async function run() {
       ...workflowOptions(options),
       storyId,
       actorRole: options.role,
+      summary: options.summary,
     });
     output(result, options.json);
     return;
@@ -357,7 +371,7 @@ async function run() {
 
   throw new DomainError("command_unknown", `Comando desconocido: ${command}`, {
     details: {
-      available: ["init", "create-epic", "create-story", "next", "show", "claim", "checkpoint", "block", "resolve", "check", "worktree", "release", "validate", "complete", "doctor", "transition"],
+      available: ["init", "create-epic", "create-story", "next", "show", "claim", "checkpoint", "block", "resolve", "check", "worktree", "worktree-remove", "release", "validate", "complete", "doctor", "transition"],
     },
   });
 }

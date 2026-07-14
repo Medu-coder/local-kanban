@@ -325,6 +325,11 @@ test("CLI cubre planificación completa sin editar Markdown manualmente", async 
     ], rootPath, configPath)).stdout);
     assert.equal(completed.status, "done");
     assert.equal(completed.integratedValidation[0].commit, integratedCommit);
+    const removed = JSON.parse((await runCli([
+      "worktree-remove", "STO-001", "--attempt-id", attempt, "--delete-branch", "--json",
+    ], rootPath, configPath)).stdout);
+    assert.equal(removed.removed, true);
+    assert.equal(removed.branchDeleted, true);
     const shown = JSON.parse((await runCli(["show", "STO-001", "--json"], rootPath, configPath)).stdout);
     assert.equal(shown.story.status, "done");
     assert.equal(shown.execution.operationalStatus, "unclaimed");
