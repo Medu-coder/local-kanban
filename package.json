@@ -30,6 +30,7 @@
     "test:skill": "node --test test/skill-management.test.js",
     "eval": "node scripts/eval-agent-flow.js",
     "benchmark": "node scripts/benchmark.js",
+    "release:verify": "npm run check && npm run test:unit && npm run test:quality && npm run eval && npm run benchmark && npm run build && npm run test:e2e && npm run skill:verify -- --local",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed"
   },

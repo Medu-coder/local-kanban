@@ -129,12 +129,11 @@ Si la verificación del symlink falla, ejecuta `npm run skill:install` y vuelve 
 Antes de publicar una actualización del Kanban ejecuta también:
 
 ```bash
-npm run test:quality
-npm run eval
-npm run benchmark
+npm run release:verify
 ```
 
-Las evaluaciones son deterministas y cubren las invariantes de coordinación. El
+Este gate incluye checks, unitarios, evaluaciones, benchmark, build, E2E y la
+verificación local del symlink de la skill. Las evaluaciones son deterministas y cubren las invariantes de coordinación. El
 benchmark usa `fixtures/long-project/scenario.json`; informa rendimiento para detectar
 regresiones, pero su gate estable valida el resultado semántico, no un umbral temporal
 dependiente de la máquina.

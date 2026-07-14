@@ -97,6 +97,9 @@ La suite E2E usa un workspace aislado en `.e2e/` y no depende de los proyectos l
 checkpoint/handoff, bloqueo humano, fencing y cierre) y `benchmark` ejecuta un
 fixture reproducible de 1.000 historias. Ambos son gates de CI.
 
+Antes de versionar la metodología, `npm run release:verify` ejecuta todos los gates y
+confirma además que la skill personal sigue enlazada al fichero canónico de este checkout.
+
 ## Documentación
 
 - [Instalación y setup](docs/INSTALLATION_AND_SETUP.md)
