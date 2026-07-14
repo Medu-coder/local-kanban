@@ -68,7 +68,7 @@ Crear trabajo nuevo mediante `create-epic` y `create-story`; no generar sus Mark
 
 1. Reconciliar repositorio, estado durable y runtime antes de asignar trabajo.
 2. Resolver resultados, leases expirados, bloqueos y conflictos pendientes.
-3. Consultar historias elegibles y entregas pendientes con `local-kanban next --json`. La respuesta separa `stories` para implementación y `verification` para revisión/cierre, ambas ordenadas de forma determinista:
+3. Consultar historias elegibles, entregas pendientes y trabajo que requiere intervención con `local-kanban next --json`. La respuesta separa `stories` para implementación, `verification` para revisión/cierre y `attention` para claims stale, bloqueos o intentos liberados que deben reanudarse. Las colas se ordenan de forma determinista:
    - `rank` ascendente;
    - prioridad `high`, `medium`, `low`;
    - mayor número de historias desbloqueadas;

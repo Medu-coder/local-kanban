@@ -211,6 +211,8 @@ test("cápsula incluye solo estado operativo y contexto accionable", async () =>
     assert.equal(capsule.objective, story.objective);
     assert.deepEqual(capsule.gates.activeBlockers, ["environment"]);
     assert.equal(capsule.gates.isReady, false);
+    assert.equal(capsule.blocks[0].id, coordination.blocks[0].id);
+    assert.equal(capsule.blocks[0].description, "Entorno no disponible");
     assert.equal("history" in capsule, false);
   } finally {
     runtime.close();

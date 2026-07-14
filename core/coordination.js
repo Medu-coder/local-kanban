@@ -125,10 +125,13 @@ export function buildOperationalCapsule({ story, coordination, gates = {}, nextA
     validation: story.validation?.commands ?? [],
     gates: effectiveGates,
     blocks: blocks.map((block) => ({
+      id: block.id,
       type: block.type,
+      description: block.description,
       owner: block.owner,
       action: block.action,
       resumeCondition: block.resumeCondition,
+      evidence: block.evidence ?? null,
     })),
     checkpoint: checkpoint
       ? {

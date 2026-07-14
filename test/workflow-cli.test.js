@@ -445,3 +445,44 @@ test("CLI complete falla antes de mutar si no existe una entrega completa en tes
     await fs.rm(rootPath, { recursive: true, force: true });
   }
 });
+
+test("CLI next conserva trabajo bloqueado o liberado en la cola de atención", async () => {
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-attention-"));
+  const configPath = path.join(rootPath, ".config", "projects.json");
+  await git(rootPath, ["init", "-q"]);
+  try {
+    await fs.writeFile(path.join(rootPath, "README.md"), "# Attention\n", "utf8");
+    await runCli(["init", "--id", "attention-project", "--name", "Attention", "--json"], rootPath, configPath);
+    await runCli([
+      "create-story", "STO-ATTENTION", "--title", "Trabajo interrumpido",
+      "--objective", "Mantener visible el siguiente paso",
+      "--acceptance", "Resuelto", "--validation", "node -e \"process.exit(0)\"",
+      "--context", "README.md", "--subtasks", "Resolver", "--json",
+    ], rootPath, configPath);
+    const claimed = JSON.parse((await runCli([
+      "claim", "STO-ATTENTION", "--agent", "agent-a", "--json",
+    ], rootPath, configPath)).stdout);
+    const envelope = [
+      "--attempt-id", claimed.execution.attemptId,
+      "--fencing-token", String(claimed.execution.fencingToken),
+      "--actor", "agent-a", "--json",
+    ];
+    const blocked = JSON.parse((await runCli([
+      "block", "STO-ATTENTION", ...envelope,
+      "--type", "human", "--description", "Falta decisión", "--owner", "Eduardo",
+      "--action", "Elegir opción", "--resume-condition", "Opción elegida",
+    ], rootPath, configPath)).stdout);
+    await runCli(["release", "STO-ATTENTION", ...envelope, "--outcome", "released"], rootPath, configPath);
+
+    const next = JSON.parse((await runCli(["next", "--json"], rootPath, configPath)).stdout);
+    assert.equal(next.count, 0);
+    assert.equal(next.verificationCount, 0);
+    assert.equal(next.attentionCount, 1);
+    assert.equal(next.attention[0].story.id, "STO-ATTENTION");
+    assert.equal(next.attention[0].blocks[0].id, blocked.block.id);
+    assert.equal(next.attention[0].gates.isReady, false);
+    assert.match(next.attention[0].nextAction, /claim STO-ATTENTION to resolve/u);
+  } finally {
+    await fs.rm(rootPath, { recursive: true, force: true });
+  }
+});

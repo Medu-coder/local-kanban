@@ -187,13 +187,13 @@ export async function createEpicWorkflow(options) {
 }
 
 export async function showStoryWorkflow(options) {
-  const { paths, story } = await storyContext(options);
+  const { project, paths, story } = await storyContext(options);
   const runtime = openRuntime(paths.rootPath);
   try {
     return buildOperationalCapsule({
       story,
       coordination: runtime.getCoordinationState(story.id),
-      gates: evaluateStoryGates(story),
+      gates: await currentGates(project, story),
       nextAction: "inspect_gate",
     });
   } finally {
@@ -243,6 +243,28 @@ export async function nextStoriesCommand(options = {}) {
         gates: evaluateStoryGates(story, dependencyStatuses(story, validation.stories)),
         nextAction: story.risk === "high" ? `claim ${story.id} as independent verifier` : `claim ${story.id} as orchestrator`,
       }));
+    const attention = validation.stories
+      .filter((story) => {
+        const state = coordination.get(story.id);
+        return state.claim?.status === "stale" || state.blocks.length > 0 ||
+          (story.status === "developing" && !state.claim);
+      })
+      .sort(workflowOrder)
+      .slice(0, limit)
+      .map((story) => {
+        const state = coordination.get(story.id);
+        const nextAction = state.claim?.status === "stale"
+          ? `reconcile and release stale claim for ${story.id}`
+          : state.blocks.length > 0
+            ? `${state.claim ? "resolve" : `claim ${story.id} to resolve`} ${state.blocks.length} block(s)`
+            : `claim ${story.id} to resume`;
+        return buildOperationalCapsule({
+          story,
+          coordination: state,
+          gates: evaluateStoryGates(story, dependencyStatuses(story, validation.stories)),
+          nextAction,
+        });
+      });
     return {
       count: selected.length,
       stories: selected.map(({ story, unlockCount, whyReady }) => ({
@@ -256,6 +278,8 @@ export async function nextStoriesCommand(options = {}) {
       })),
       verificationCount: verification.length,
       verification,
+      attentionCount: attention.length,
+      attention,
     };
   } finally {
     runtime.close();
