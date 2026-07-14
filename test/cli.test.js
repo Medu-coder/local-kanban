@@ -24,7 +24,7 @@ async function runCli(args, cwd, configPath) {
 test("CLI inicializa, valida y transiciona una historia con CAS", async () => {
   const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-cli-"));
   const configPath = path.join(rootPath, ".config", "projects.json");
-  await fs.mkdir(path.join(rootPath, ".git"));
+  await execFileAsync("git", ["init", "-q", rootPath]);
 
   try {
     const initialized = JSON.parse(

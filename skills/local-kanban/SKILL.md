@@ -38,16 +38,32 @@ Antes de operar, ejecutar `local-kanban --help` y usar únicamente los subcomand
 
 Regenerar la cápsula completa tras resume, compactación o handoff. Tras una operación normal, devolver principalmente el delta, el gate vigente y la siguiente acción. Ampliar contexto cuando sea necesario; no aplicar un límite de tokens que elimine información crítica.
 
+## Interfaz agent-first
+
+Usar este flujo mínimo; la CLI genera internamente IDs, timestamps y claves de idempotencia:
+
+```text
+local-kanban next --json
+local-kanban claim STO-... --agent AGENT_ID --json
+local-kanban checkpoint STO-... --attempt-id ID --fencing-token N --summary "..." --json
+local-kanban block STO-... --attempt-id ID --fencing-token N --type TYPE \
+  --description "..." --owner "..." --action "..." --resume-condition "..." --json
+local-kanban validate STO-... --attempt-id ID --fencing-token N --json
+local-kanban complete STO-... --attempt-id ID --fencing-token N --role orchestrator --json
+```
+
+Conservar el `attemptId` y `fencingToken` devueltos por `claim`; toda mutación posterior de ejecución los exige y renueva el lease. No inventarlos ni reutilizarlos en otra historia. `validate` sin `STORY_ID` valida globalmente los documentos del proyecto; con `STORY_ID` ejecuta los comandos declarados por la historia, registra evidencia durable vinculada al commit y al intento, y entrega en `testing/verifying`. Solo el orquestador usa `complete`, después de revisar el resultado y los gates.
+
 ## Flujo del orquestador
 
 1. Reconciliar repositorio, estado durable y runtime antes de asignar trabajo.
 2. Resolver resultados, leases expirados, bloqueos y conflictos pendientes.
-3. Consultar historias elegibles y ordenarlas de forma determinista:
+3. Consultar historias elegibles con `local-kanban next --json`, ordenadas de forma determinista:
    - `rank` ascendente;
    - prioridad `high`, `medium`, `low`;
    - mayor número de historias desbloqueadas;
    - ID como desempate estable.
-4. Autoasignar y lanzar trabajo mientras exista capacidad WIP y no haya gate humano real.
+4. Autoasignar con `claim` y lanzar trabajo mientras exista capacidad WIP y no haya gate humano real.
 5. Crear branch y worktree por especialista cuando haya dos o más escritores concurrentes. Permitir el workspace actual con un único escritor.
 6. Serializar historias con superficies de cambio incompatibles.
 7. Integrar, revisar y validar resultados; reevaluar inmediatamente el trabajo desbloqueado.
@@ -60,10 +76,10 @@ No absorber trabajo delegable por conveniencia. Registrar la causa de overrides,
 1. Confirmar historia, ownership, claim/lease, scope y Definition of Ready.
 2. Leer la cápsula y únicamente los archivos necesarios para comenzar.
 3. Ejecutar la historia end to end dentro del scope concedido.
-4. Registrar checkpoints solo en hitos significativos, pausas largas, handoffs o bloqueos. Incluir progreso, cambios relevantes, validación realizada, trabajo restante y siguiente acción.
+4. Registrar `checkpoint` solo en hitos significativos, pausas largas, handoffs o bloqueos. Incluir progreso, cambios relevantes, validación realizada, trabajo restante y siguiente acción.
 5. Renovar el lease implícitamente mediante actividad normal de la interfaz. No generar heartbeats conversacionales.
-6. Ante un bloqueo real, registrar tipo, evidencia, responsable, acción solicitada y condición de reanudación.
-7. Ejecutar la validación definida y asociar evidencia al commit o revisión comprobada.
+6. Ante un bloqueo real, usar `block` con tipo, evidencia, responsable, acción solicitada y condición de reanudación.
+7. Usar `validate STORY_ID`; no registrar manualmente evidencia ni omitir los comandos definidos.
 8. Para riesgo `standard`, entregar en `verifying` al superar los gates. Para riesgo `high`, solicitar verificación independiente antes de la entrega.
 9. Entregar un handoff compacto que permita al orquestador localizar cambios, pruebas, decisiones y trabajo residual. No marcar `done`.
 

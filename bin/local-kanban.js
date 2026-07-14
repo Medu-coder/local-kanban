@@ -6,12 +6,30 @@ import { randomUUID } from "node:crypto";
 import { doctorProject, transitionStoryCommand, validateProjectDocuments } from "../core/commands.js";
 import { DomainError } from "../core/errors.js";
 import { getRegisteredProject, initializeProject } from "../core/project.js";
+import {
+  blockStoryWorkflow,
+  checkpointStoryWorkflow,
+  claimStoryWorkflow,
+  completeStoryWorkflow,
+  nextStoriesCommand,
+  validateStoryWorkflow,
+} from "../core/workflow-commands.js";
 
 const help = `Local Kanban
 
 Uso:
   local-kanban init [--id ID] [--name NAME] [--docs-path PATH] [--json]
-  local-kanban validate [--json]
+  local-kanban next [--limit N] [--json]
+  local-kanban claim STORY_ID [--agent AGENT] [--session-id ID] [--json]
+  local-kanban checkpoint STORY_ID --attempt-id ID --fencing-token N --summary TEXT
+    [--next-action TEXT] [--files a,b] [--tests a,b] [--actor ACTOR] [--json]
+  local-kanban block STORY_ID --attempt-id ID --fencing-token N --type TYPE
+    --description TEXT --owner OWNER --action TEXT --resume-condition TEXT
+    [--evidence TEXT] [--actor ACTOR] [--json]
+  local-kanban validate [STORY_ID --attempt-id ID --fencing-token N]
+    [--commit REF] [--evidence-type TYPE] [--summary TEXT] [--actor ACTOR] [--json]
+  local-kanban complete STORY_ID --attempt-id ID --fencing-token N
+    --role orchestrator [--actor ACTOR] [--json]
   local-kanban doctor [--json]
   local-kanban transition STORY_ID --status STATUS --expected-revision N
     [--epic EPI_ID|none] [--actor ACTOR] [--role orchestrator|specialist]
@@ -50,6 +68,24 @@ function output(value, json) {
   console.log(JSON.stringify(value, null, 2));
 }
 
+function commaList(value) {
+  if (!value) {
+    return [];
+  }
+  return String(value).split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function workflowOptions(options) {
+  return {
+    cwd: process.cwd(),
+    configPath: process.env.KANBAN_CONFIG_PATH,
+    actor: options.actor ?? options.agent ?? process.env.CODEX_AGENT_ID ?? "codex",
+    agentId: options.agent ?? process.env.CODEX_AGENT_ID,
+    attemptId: options.attemptId,
+    fencingToken: options.fencingToken,
+  };
+}
+
 async function run() {
   const { command, options } = parseArgs(process.argv.slice(2));
   if (!command || command === "help" || options.help || command === "--help" || command === "-h") {
@@ -70,6 +106,18 @@ async function run() {
   }
 
   if (command === "validate") {
+    const storyId = options._[0];
+    if (storyId) {
+      const result = await validateStoryWorkflow({
+        ...workflowOptions(options),
+        storyId,
+        commit: options.commit,
+        evidenceType: options.evidenceType,
+        summary: options.summary,
+      });
+      output(result, options.json);
+      return;
+    }
     const project = await getRegisteredProject({
       cwd: process.cwd(),
       configPath: process.env.KANBAN_CONFIG_PATH,
@@ -79,6 +127,80 @@ async function run() {
     if (!result.ok) {
       process.exitCode = 2;
     }
+    return;
+  }
+
+  if (command === "next") {
+    const result = await nextStoriesCommand({
+      cwd: process.cwd(),
+      configPath: process.env.KANBAN_CONFIG_PATH,
+      limit: options.limit,
+    });
+    output(result, options.json);
+    return;
+  }
+
+  if (command === "claim") {
+    const storyId = options._[0];
+    if (!storyId) {
+      throw new DomainError("command_invalid", "claim requiere STORY_ID.");
+    }
+    const result = await claimStoryWorkflow({
+      ...workflowOptions(options),
+      storyId,
+      sessionId: options.sessionId,
+    });
+    output(result, options.json);
+    return;
+  }
+
+  if (command === "checkpoint") {
+    const storyId = options._[0];
+    if (!storyId) {
+      throw new DomainError("command_invalid", "checkpoint requiere STORY_ID.");
+    }
+    const result = await checkpointStoryWorkflow({
+      ...workflowOptions(options),
+      storyId,
+      summary: options.summary,
+      nextAction: options.nextAction,
+      files: commaList(options.files),
+      tests: commaList(options.tests),
+    });
+    output(result, options.json);
+    return;
+  }
+
+  if (command === "block") {
+    const storyId = options._[0];
+    if (!storyId) {
+      throw new DomainError("command_invalid", "block requiere STORY_ID.");
+    }
+    const result = await blockStoryWorkflow({
+      ...workflowOptions(options),
+      storyId,
+      type: options.type,
+      description: options.description,
+      owner: options.owner,
+      action: options.action,
+      resumeCondition: options.resumeCondition,
+      evidence: options.evidence,
+    });
+    output(result, options.json);
+    return;
+  }
+
+  if (command === "complete") {
+    const storyId = options._[0];
+    if (!storyId) {
+      throw new DomainError("command_invalid", "complete requiere STORY_ID.");
+    }
+    const result = await completeStoryWorkflow({
+      ...workflowOptions(options),
+      storyId,
+      actorRole: options.role,
+    });
+    output(result, options.json);
     return;
   }
 
@@ -120,7 +242,9 @@ async function run() {
   }
 
   throw new DomainError("command_unknown", `Comando desconocido: ${command}`, {
-    details: { available: ["init", "validate", "doctor", "transition"] },
+    details: {
+      available: ["init", "next", "claim", "checkpoint", "block", "validate", "complete", "doctor", "transition"],
+    },
   });
 }
 
