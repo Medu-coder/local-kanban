@@ -30,16 +30,16 @@ function entityConfig(entityType) {
   return config;
 }
 
-export function hashEntityContent(content) {
+function hashEntityContent(content) {
   return createHash("sha256").update(content).digest("hex");
 }
 
-export function serializeEntity(entityType, entity, body = "") {
+function serializeEntity(entityType, entity, body = "") {
   entityConfig(entityType).validator(entity);
   return matter.stringify(body, entity);
 }
 
-export async function readEntity(project, entityType, entityId, options = {}) {
+async function readEntity(project, entityType, entityId, options = {}) {
   const config = entityConfig(entityType);
   const projectPaths = project.docsRoot ? project : await resolveProjectPaths(project);
   const filePath = await resolveEntityPath(projectPaths, entityType, entityId);

@@ -1,4 +1,4 @@
-export function toStorySlug(value) {
+function toStorySlug(value) {
   return String(value ?? "")
     .trim()
     .toLowerCase()

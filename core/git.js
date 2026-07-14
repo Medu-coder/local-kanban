@@ -33,7 +33,7 @@ function safeAttemptId(value) {
   return normalized;
 }
 
-export async function listWorktrees(rootPath) {
+async function listWorktrees(rootPath) {
   const output = await git(rootPath, ["worktree", "list", "--porcelain"]);
   if (!output) {
     return [];

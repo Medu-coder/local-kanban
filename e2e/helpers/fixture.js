@@ -4,9 +4,9 @@ import { fileURLToPath } from "node:url";
 import matter from "gray-matter";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-export const e2eRoot = path.join(repoRoot, ".e2e");
-export const sourceProjectRoot = path.join(repoRoot, "e2e", "fixtures", "source-project");
-export const workspaceRoot = path.join(e2eRoot, "workspace");
+const e2eRoot = path.join(repoRoot, ".e2e");
+const sourceProjectRoot = path.join(repoRoot, "e2e", "fixtures", "source-project");
+const workspaceRoot = path.join(e2eRoot, "workspace");
 export const projectRoot = path.join(workspaceRoot, "sample-project");
 export const configPath = path.join(e2eRoot, "projects.json");
 

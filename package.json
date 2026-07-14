@@ -26,7 +26,8 @@
     "skill:verify": "node scripts/manage-skill.js verify",
     "skill:smoke": "node scripts/verify-skill-consumer.js",
     "skill:smoke:isolated": "node scripts/verify-skill-isolated.js",
-    "check": "node scripts/check-static.js",
+    "check": "node scripts/check-static.js && npm run check:dead-code",
+    "check:dead-code": "knip",
     "test:unit": "node --test test/*.test.js",
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=65 --test-coverage-functions=90 test/*.test.js",
     "test:quality": "node --test test/diagnostics.test.js test/evals.test.js",
@@ -52,6 +53,7 @@
     "@playwright/test": "^1.59.1",
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^9.1.2",
+    "knip": "^6.26.0",
     "vite": "^8.1.4"
   },
   "allowScripts": {

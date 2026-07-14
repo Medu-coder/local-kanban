@@ -11,8 +11,8 @@ import { validateProject } from "./schema.js";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const execFileAsync = promisify(execFile);
-export const kanbanRoot = path.resolve(moduleDir, "..");
-export const defaultProjectsConfigPath = path.join(kanbanRoot, "config", "projects.json");
+const kanbanRoot = path.resolve(moduleDir, "..");
+const defaultProjectsConfigPath = path.join(kanbanRoot, "config", "projects.json");
 
 const contractMarker = "<!-- local-kanban-contract -->";
 const contractText = `${contractMarker}
@@ -23,7 +23,7 @@ const contractText = `${contractMarker}
 - El orquestador es el único rol que integra y marca historias como \`done\`.
 `;
 
-export function slugifyProject(value) {
+function slugifyProject(value) {
   return String(value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/gu, "")
@@ -34,7 +34,7 @@ export function slugifyProject(value) {
     .slice(0, 50);
 }
 
-export async function findProjectRoot(startPath = process.cwd()) {
+async function findProjectRoot(startPath = process.cwd()) {
   let current = path.resolve(startPath);
 
   while (true) {
@@ -176,7 +176,7 @@ export async function getRegisteredProject(options = {}) {
   return { ...project, rootPath: await fs.realpath(project.rootPath) };
 }
 
-export async function registerProject(project, configPath = defaultProjectsConfigPath) {
+async function registerProject(project, configPath = defaultProjectsConfigPath) {
   validateProject(project);
   const projects = await readRegistry(configPath);
   const normalizedRoot = await fs.realpath(project.rootPath);

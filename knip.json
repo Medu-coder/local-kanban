@@ -1,0 +1,3 @@
+{
+  "entry": ["e2e/helpers/prepare-fixture-cli.js"]
+}

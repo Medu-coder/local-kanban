@@ -60,7 +60,7 @@ export function explainQuarantine(quarantine) {
   };
 }
 
-export function explainDiagnosticCheck(item) {
+function explainDiagnosticCheck(item) {
   const commandByCheck = {
     schema_dag: "local-kanban validate --json",
     paths: "local-kanban doctor --json",

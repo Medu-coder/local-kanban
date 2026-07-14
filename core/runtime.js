@@ -272,7 +272,7 @@ function mapOperation(row) {
   };
 }
 
-export class RuntimeStore {
+class RuntimeStore {
   constructor(projectRoot) {
     const canonicalRoot = fs.realpathSync(projectRoot);
     const runtimeDir = path.join(canonicalRoot, ".local-kanban");
