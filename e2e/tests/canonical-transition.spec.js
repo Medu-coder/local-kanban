@@ -69,12 +69,13 @@ test("HTTP v1 aplica gates, CAS e idempotencia mediante el core", async ({ reque
   const filePath = getStoryPath("STO-900");
   const parsed = matter(await fs.readFile(filePath, "utf8"));
   parsed.data.readiness_criteria[0].checked = true;
+  parsed.data.revision = 2;
   await fs.writeFile(filePath, matter.stringify(parsed.content, parsed.data), "utf8");
 
   const payload = {
     status: "developing",
     epicId: null,
-    expectedRevision: 1,
+    expectedRevision: 2,
     idempotencyKey: "canonical-transition-1",
   };
   const moved = await request.post(endpoint, { data: payload });
@@ -82,13 +83,13 @@ test("HTTP v1 aplica gates, CAS e idempotencia mediante el core", async ({ reque
   expect(await moved.json()).toMatchObject({
     ok: true,
     storyId: "STO-900",
-    revision: 2,
+    revision: 3,
     status: "developing",
   });
 
   const retried = await request.post(endpoint, { data: payload });
   expect(retried.status()).toBe(200);
-  expect(await retried.json()).toMatchObject({ revision: 2, status: "developing" });
+  expect(await retried.json()).toMatchObject({ revision: 3, status: "developing" });
 
   const stale = await request.post(endpoint, {
     data: { ...payload, status: "testing", idempotencyKey: "canonical-stale-1" },
@@ -97,8 +98,19 @@ test("HTTP v1 aplica gates, CAS e idempotencia mediante el core", async ({ reque
   expect((await stale.json()).code).toBe("revision_conflict");
 
   const persisted = matter(await fs.readFile(filePath, "utf8"));
-  expect(persisted.data.revision).toBe(2);
+  expect(persisted.data.revision).toBe(3);
   expect(persisted.data.status).toBe("developing");
+
+  const timeline = await request.get(
+    "/api/projects/sample-project/stories/STO-900/timeline",
+  );
+  expect(timeline.status()).toBe(200);
+  const timelinePayload = await timeline.json();
+  expect(timelinePayload).toMatchObject({
+    storyId: "STO-900",
+    coordination: { operationalStatus: "unclaimed" },
+  });
+  expect(timelinePayload.events.some((event) => event.eventType === "operation_completed")).toBe(true);
 });
 
 test("PUT y toggles v1 aplican CAS, idempotencia y preservan el body", async ({ request }) => {

@@ -16,6 +16,8 @@ import {
 import { readCanonicalEpic, readCanonicalStory } from "../core/entity-repository.js";
 import { DomainError } from "../core/errors.js";
 import { FilesystemSafetyError } from "../core/paths.js";
+import { reconcileProjectDocuments } from "../core/reconciliation.js";
+import { openRuntime } from "../core/runtime.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -601,7 +603,26 @@ async function loadProjects() {
       const storiesDir = path.join(docsRoot, "stories");
       const epics = await readMarkdownCollection(epicsDir, "epic", project);
       const stories = await readMarkdownCollection(storiesDir, "story", project);
-      const storiesWithEpic = enrichStories({ ...project, epics }, stories);
+      const runtime = openRuntime(project.rootPath);
+      let coordinationByStory;
+      let quarantines;
+      try {
+        await reconcileProjectDocuments(canonicalProject(project), runtime, { actor: "ui-watcher" });
+        coordinationByStory = new Map(
+          stories.map((story) => [story.id, runtime.getCoordinationState(story.id)]),
+        );
+        quarantines = new Map(
+          runtime.listQuarantines().map((item) => [`${item.entityType}:${item.entityId}`, item]),
+        );
+      } finally {
+        runtime.close();
+      }
+      const operationalStories = stories.map((story) => ({
+        ...story,
+        coordination: coordinationByStory.get(story.id),
+        quarantine: quarantines.get(`story:${story.id}`) ?? null,
+      }));
+      const storiesWithEpic = enrichStories({ ...project, epics }, operationalStories);
 
       const storyCountByEpic = storiesWithEpic.reduce((acc, story) => {
         const key = normalizeId(story.epicId ?? "none");
@@ -664,6 +685,8 @@ async function loadProjects() {
         docsPath: project.docsPath ?? "docs/kanban",
         epics: hydratedEpics,
         stories: storiesWithEpic,
+        health: quarantines.size > 0 ? "degraded" : "healthy",
+        quarantines: [...quarantines.values()],
         stats: statuses.reduce((acc, status) => {
           acc[status] = storiesWithEpic.filter((story) => story.status === status).length;
           return acc;
@@ -1384,6 +1407,66 @@ app.put("/api/projects/:projectId/stories/:storyId", async (req, res) => {
     return res.json({ ok: true, id: storyId });
   } catch (error) {
     return sendMutationError(res, error, "No se pudo actualizar la historia.");
+  }
+});
+
+app.get("/api/projects/:projectId/stories/:storyId/timeline", async (req, res) => {
+  const project = await getProjectConfig(req.params.projectId);
+  if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
+  const runtime = openRuntime(project.rootPath);
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+    return res.json({
+      storyId: req.params.storyId,
+      coordination: runtime.getCoordinationState(req.params.storyId),
+      events: runtime.listAuditEvents({ storyId: req.params.storyId, limit }),
+    });
+  } catch (error) {
+    return sendDomainError(res, error, "No se pudo cargar el timeline.");
+  } finally {
+    runtime.close();
+  }
+});
+
+app.post("/api/projects/:projectId/stories/:storyId/coordination/release", async (req, res) => {
+  const project = await getProjectConfig(req.params.projectId);
+  if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
+  const runtime = openRuntime(project.rootPath);
+  try {
+    const result = runtime.releaseClaim({
+      storyId: req.params.storyId,
+      attemptId: req.body?.attemptId,
+      fencingToken: req.body?.fencingToken,
+      outcome: req.body?.outcome ?? "abandoned",
+      actor: req.body?.actor ?? "human-ui",
+    });
+    scheduleBroadcast();
+    return res.json({ ok: true, result });
+  } catch (error) {
+    return sendDomainError(res, error, "No se pudo liberar el claim.");
+  } finally {
+    runtime.close();
+  }
+});
+
+app.post("/api/projects/:projectId/stories/:storyId/blocks/:blockId/resolve", async (req, res) => {
+  const project = await getProjectConfig(req.params.projectId);
+  if (!project) return res.status(404).json({ error: "Proyecto no encontrado." });
+  const runtime = openRuntime(project.rootPath);
+  try {
+    const result = runtime.resolveBlock({
+      storyId: req.params.storyId,
+      blockId: req.params.blockId,
+      attemptId: req.body?.attemptId,
+      fencingToken: req.body?.fencingToken,
+      actor: req.body?.actor ?? "human-ui",
+    });
+    scheduleBroadcast();
+    return res.json({ ok: true, result });
+  } catch (error) {
+    return sendDomainError(res, error, "No se pudo resolver el bloqueo.");
+  } finally {
+    runtime.close();
   }
 });
 
