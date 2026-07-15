@@ -152,6 +152,36 @@ function uniqueItems(values = []) {
   return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
 }
 
+const planningChoices = Object.freeze({
+  priority: Object.freeze(["low", "medium", "high"]),
+  risk: Object.freeze(["standard", "high"]),
+  executionMode: Object.freeze(["human", "agent", "hybrid"]),
+  storyType: Object.freeze(["feature", "bug", "tech_debt", "research", "chore"]),
+});
+
+function planningChoice(value, option, fallback) {
+  const selected = value ?? fallback;
+  if (!planningChoices[option].includes(selected)) {
+    const suggestion = option === "storyType" && selected === "spike"
+      ? "Usa research para spikes exploratorios."
+      : undefined;
+    throw new DomainError(
+      "option_invalid",
+      `--${option.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)} no es válido.`,
+      {
+        details: {
+          option,
+          received: selected,
+          allowed: planningChoices[option],
+          ...(suggestion ? { suggestion } : {}),
+        },
+        status: 400,
+      },
+    );
+  }
+  return selected;
+}
+
 const workflowPriority = Object.freeze({ high: 0, medium: 1, low: 2 });
 
 function workflowOrder(left, right) {
@@ -193,10 +223,11 @@ export async function createStoryWorkflow(options) {
     non_scope: uniqueItems(options.nonScope),
     epic: options.epic ?? null,
     status: "backlog",
-    priority: options.priority ?? "medium",
-    risk: options.risk ?? "standard",
+    priority: planningChoice(options.priority, "priority", "medium"),
+    risk: planningChoice(options.risk, "risk", "standard"),
     ...(Number.isSafeInteger(options.rank) ? { rank: options.rank } : {}),
-    execution_mode: options.executionMode ?? "agent",
+    execution_mode: planningChoice(options.executionMode, "executionMode", "agent"),
+    story_type: planningChoice(options.storyType, "storyType", "feature"),
     acceptance_criteria: acceptance.map((label, index) => ({
       id: slug(label, `acceptance-${index + 1}`),
       label,

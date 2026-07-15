@@ -35,9 +35,14 @@ Uso:
   local-kanban create-epic EPI-ID --title TEXT --objective TEXT [--labels a,b] [--json]
   local-kanban create-story STO-ID --title TEXT --objective TEXT --acceptance a,b
     [--validation COMMAND[,COMMAND]] [--validation-command COMMAND]... --context FILE[,FILE]
+    Al menos una forma de validación es obligatoria; ambas se pueden combinar.
     [--scope a,b] [--subtasks a,b]
     [--epic EPI-ID] [--hard STO-ID,...] [--related STO-ID,...]
-    [--priority low|medium|high] [--risk standard|high] [--rank N] [--json]
+    [--priority low|medium|high] [--risk standard|high]
+    [--execution-mode human|agent|hybrid]
+    [--story-type feature|bug|tech_debt|research|chore] [--rank N] [--json]
+    Defaults: priority=medium, risk=standard, execution-mode=agent, story-type=feature
+    Para spikes exploratorios usar --story-type research.
   local-kanban next [--limit N] [--json]
   local-kanban show STORY_ID [--json]
   local-kanban claim STORY_ID [--agent AGENT] [--session-id ID] [--json]
@@ -67,6 +72,41 @@ Uso:
   local-kanban --help
 `;
 
+const knownOptions = new Set([
+  "help", "json", "id", "name", "docsPath", "title", "objective", "description", "labels", "body",
+  "idempotencyKey", "acceptance", "validation", "validationCommand", "context", "scope", "nonScope",
+  "subtasks", "epic", "hard", "related", "priority", "risk", "executionMode", "storyType", "rank", "limit",
+  "agent", "sessionId", "attemptId", "fencingToken", "summary", "nextAction", "files", "tests", "actor",
+  "type", "owner", "action", "resumeCondition", "evidence", "blockId", "resolution", "criterion", "subtask", "baseCommit",
+  "deleteBranch", "outcome", "commit", "evidenceType", "role", "all", "acceptCurrent", "reason", "apply",
+]);
+const booleanOptions = new Set(["help", "json", "deleteBranch", "all", "acceptCurrent", "apply"]);
+
+const commandOptions = Object.freeze({
+  init: ["id", "name", "docsPath"],
+  "create-epic": ["title", "objective", "description", "labels", "body", "idempotencyKey", "actor"],
+  "create-story": [
+    "title", "objective", "description", "acceptance", "validation", "validationCommand", "context", "scope",
+    "nonScope", "subtasks", "epic", "hard", "related", "priority", "risk", "executionMode", "storyType", "rank",
+    "body", "idempotencyKey", "actor",
+  ],
+  next: ["limit"],
+  show: [],
+  claim: ["agent", "sessionId", "actor"],
+  checkpoint: ["attemptId", "fencingToken", "summary", "nextAction", "files", "tests", "actor", "agent"],
+  block: ["attemptId", "fencingToken", "type", "description", "owner", "action", "resumeCondition", "evidence", "actor", "agent"],
+  resolve: ["attemptId", "fencingToken", "blockId", "resolution", "evidence", "actor", "agent"],
+  check: ["attemptId", "fencingToken", "criterion", "subtask", "idempotencyKey", "actor", "agent"],
+  worktree: ["attemptId", "fencingToken", "baseCommit", "actor", "agent"],
+  "worktree-remove": ["attemptId", "fencingToken", "deleteBranch", "actor", "agent"],
+  release: ["attemptId", "fencingToken", "outcome", "summary", "nextAction", "actor", "agent"],
+  validate: ["attemptId", "fencingToken", "commit", "evidenceType", "summary", "actor", "agent"],
+  complete: ["attemptId", "fencingToken", "role", "summary", "actor", "agent"],
+  doctor: [],
+  reconcile: ["all", "acceptCurrent", "reason", "actor"],
+  "migrate-legacy": ["validation", "validationCommand", "risk", "reason", "apply"],
+});
+
 function parseArgs(argv) {
   const [command, ...rest] = argv;
   const options = { _: [] };
@@ -78,14 +118,37 @@ function parseArgs(argv) {
     }
     const [rawKey, inlineValue] = token.slice(2).split("=", 2);
     const key = rawKey.replace(/-([a-z])/gu, (_match, letter) => letter.toUpperCase());
+    if (!knownOptions.has(key)) {
+      throw new DomainError("option_unknown", `Opción desconocida: --${rawKey}.`, {
+        details: { option: rawKey },
+        status: 400,
+      });
+    }
     let value;
-    if (inlineValue !== undefined) {
+    if (booleanOptions.has(key)) {
+      if (inlineValue !== undefined && !["true", "false"].includes(inlineValue)) {
+        throw new DomainError("option_invalid", `--${rawKey} solo admite true o false.`, {
+          details: { option: rawKey, received: inlineValue, allowed: ["true", "false"] },
+          status: 400,
+        });
+      }
+      value = inlineValue === undefined ? true : inlineValue === "true";
+    } else if (inlineValue !== undefined) {
+      if (!inlineValue.trim()) {
+        throw new DomainError("option_value_missing", `--${rawKey} exige un valor.`, {
+          details: { option: rawKey },
+          status: 400,
+        });
+      }
       value = inlineValue;
     } else if (rest[index + 1] && !rest[index + 1].startsWith("--")) {
       value = rest[index + 1];
       index += 1;
     } else {
-      value = true;
+      throw new DomainError("option_value_missing", `--${rawKey} exige un valor.`, {
+        details: { option: rawKey },
+        status: 400,
+      });
     }
     if (key === "validationCommand") {
       options[key] = [...(options[key] ?? []), value];
@@ -125,6 +188,71 @@ function validationCommands(options) {
   ];
 }
 
+function optionalRank(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!/^\d+$/u.test(String(value))) {
+    throw new DomainError("option_invalid", "--rank debe ser un entero mayor o igual que cero.", {
+      details: { option: "rank", received: value },
+      status: 400,
+    });
+  }
+  const rank = Number(value);
+  if (!Number.isSafeInteger(rank)) {
+    throw new DomainError("option_invalid", "--rank excede el rango de enteros seguros.", {
+      details: { option: "rank", received: value },
+      status: 400,
+    });
+  }
+  return rank;
+}
+
+function assertCommandOptions(command, options) {
+  const allowed = commandOptions[command];
+  if (!allowed) {
+    return;
+  }
+  const accepted = new Set(["_", "json", "help", ...allowed]);
+  const invalid = Object.keys(options).find((key) => !accepted.has(key));
+  if (invalid) {
+    const rendered = invalid.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`);
+    throw new DomainError("option_unknown", `--${rendered} no pertenece al comando ${command}.`, {
+      details: { command, option: rendered, allowed },
+      status: 400,
+    });
+  }
+}
+
+function assertNoExtraPositionals(command, positionals) {
+  const maximum = {
+    init: 0,
+    "create-epic": 1,
+    "create-story": 1,
+    next: 0,
+    show: 1,
+    claim: 1,
+    checkpoint: 1,
+    block: 1,
+    resolve: 1,
+    check: 1,
+    worktree: 1,
+    "worktree-remove": 1,
+    release: 1,
+    validate: 1,
+    complete: 1,
+    doctor: 0,
+    reconcile: 1,
+    "migrate-legacy": 0,
+  }[command];
+  if (maximum !== undefined && positionals.length > maximum) {
+    throw new DomainError("command_invalid", `${command} recibió argumentos posicionales adicionales.`, {
+      details: { command, received: positionals, maximum },
+      status: 400,
+    });
+  }
+}
+
 function workflowOptions(options) {
   return {
     cwd: process.cwd(),
@@ -142,6 +270,8 @@ async function run() {
     console.log(help);
     return;
   }
+  assertCommandOptions(command, options);
+  assertNoExtraPositionals(command, options._);
 
   if (command === "init") {
     const result = await initializeProject({
@@ -196,8 +326,6 @@ async function run() {
   }
 
   if (command === "create-story") {
-    const rankValue = String(options.rank ?? "");
-    const rank = /^\d+$/u.test(rankValue) ? Number(rankValue) : undefined;
     const result = await createStoryWorkflow({
       ...workflowOptions(options),
       storyId: options._[0],
@@ -216,7 +344,8 @@ async function run() {
       priority: options.priority,
       risk: options.risk,
       executionMode: options.executionMode,
-      rank,
+      storyType: options.storyType,
+      rank: optionalRank(options.rank),
       body: options.body,
       idempotencyKey: options.idempotencyKey,
     });

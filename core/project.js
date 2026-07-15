@@ -270,5 +270,18 @@ export async function initializeProject(options = {}) {
     options.configPath,
   );
 
-  return { project, docsRoot, runtimePath: path.join(rootPath, ".local-kanban", "runtime.sqlite") };
+  return {
+    project,
+    docsRoot,
+    runtimePath: path.join(rootPath, ".local-kanban", "runtime.sqlite"),
+    guidance: {
+      summary: "Proyecto registrado. Verificar salud antes de crear o reclamar trabajo.",
+      command: "local-kanban doctor --json",
+      next: [
+        "local-kanban create-epic EPI-001 --title \"...\" --objective \"...\" --json",
+        "local-kanban create-story STO-001 --title \"...\" --objective \"...\" --acceptance \"...\" --validation-command \"...\" --context \"...\" --epic EPI-001 --json",
+        "local-kanban next --json",
+      ],
+    },
+  };
 }

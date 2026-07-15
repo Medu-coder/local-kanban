@@ -1,11 +1,50 @@
 ---
 name: local-kanban
-description: Metodología Codex-first para planificar, priorizar, delegar, ejecutar y verificar trabajo de desarrollo largo mediante Local Kanban. Usar cuando un repositorio gestione épicas e historias en docs/kanban, cuando el agente principal deba orquestar subagentes, o cuando un especialista reciba una historia de Local Kanban.
+description: Esta skill debe usarse cuando el usuario pida "dar de alta este proyecto en Local Kanban", "inicializar Local Kanban", "crear épicas o tarjetas", "gestionar el backlog", planificar, priorizar, delegar, ejecutar o verificar trabajo mediante Local Kanban, o cuando un agente reciba ownership de una historia STO-*.
 ---
 
 # Local Kanban
 
 Coordinar trabajo de desarrollo agéntico manteniendo el Kanban como contrato operativo. Optimizar simultáneamente flujo global, seguridad de concurrencia y consumo de contexto.
+
+## Arranque autónomo sin contexto previo
+
+Tratar esta skill como la única fuente de contexto necesaria para adoptar y operar Local Kanban. No exigir al usuario que conozca IDs, enums, rutas internas, schemas ni el checkout proveedor.
+
+Para dar de alta un repositorio consumidor nuevo:
+
+1. Situarse en cualquier directorio dentro de su árbol Git y ejecutar `local-kanban --help`.
+2. Ejecutar `local-kanban init --json` sin inventar `--id` ni `--name` salvo que el usuario los haya pedido. La CLI deriva ambos de la raíz Git y el comando es idempotente.
+3. Seguir `guidance.command` de la respuesta y ejecutar `local-kanban doctor --json`.
+4. Inspeccionar los comandos de validación y archivos de contexto reales del proyecto antes de crear trabajo.
+5. Crear épicas e historias exclusivamente con `create-epic` y `create-story`; no escribir frontmatter manualmente.
+6. Versionar los contratos Markdown creados antes de preparar un worktree basado en ellos.
+7. Ejecutar `local-kanban next --json` y seguir el `guidance.command` devuelto por la CLI.
+
+Flujo mínimo para un proyecto vacío, sustituyendo únicamente el contenido específico entre comillas:
+
+```bash
+local-kanban init --json
+local-kanban doctor --json
+local-kanban create-epic EPI-001 --title "Entrega inicial" --objective "Entregar un resultado observable" --json
+local-kanban create-story STO-001 --title "Implementar entrega" \
+  --objective "Crear y verificar el resultado" \
+  --acceptance "Resultado observable" \
+  --validation-command "COMANDO_REAL_DEL_PROYECTO" \
+  --context "ARCHIVO_REAL_DEL_PROYECTO" \
+  --subtasks "Implementar" --epic EPI-001 --json
+local-kanban validate --json
+local-kanban next --json
+```
+
+Usar los defaults de planificación cuando el usuario no haya pedido otra semántica: `priority=medium`, `risk=standard`, `execution-mode=agent` y `story-type=feature`. Valores admitidos:
+
+- `priority`: `low`, `medium`, `high`;
+- `risk`: `standard`, `high`;
+- `execution-mode`: `human`, `agent`, `hybrid`;
+- `story-type`: `feature`, `bug`, `tech_debt`, `research`, `chore`.
+
+Representar un spike exploratorio como `--story-type research`; `spike` no es un valor válido. Ante `option_invalid` u `option_unknown`, corregir el comando usando `details.allowed` o la ayuda y repetirlo. Confirmar que un fallo de creación no dejó documento parcial con `local-kanban validate --json`.
 
 ## Reglas innegociables
 
@@ -20,7 +59,7 @@ Coordinar trabajo de desarrollo agéntico manteniendo el Kanban como contrato op
 9. No tolerar degradaciones silenciosas: todo warning o fallo debe conservar causa, impacto, acción, comando y verificación. Un `fail` bloquea ejecución; un warning declara qué garantía se reduce.
 10. El checkout proveedor de Local Kanban no puede ser simultáneamente proveedor y consumidor: no usar Local Kanban para gestionar su propio desarrollo, no ejecutar `local-kanban init` sobre ese checkout, no registrarlo como proyecto consumidor y no crear en él `docs/kanban` ni `.local-kanban/runtime.sqlite` para ese fin. El dogfooding solo puede ejecutarse sobre copias, fixtures o proyectos temporales descartables, con `KANBAN_CONFIG_PATH` y `HOME` aislados del usuario y del checkout proveedor.
 
-Antes de operar, ejecutar `local-kanban --help` y usar únicamente los subcomandos que anuncie la versión instalada. Si la CLI no está disponible, resolver la fuente de esta skill con `realpath ~/.agents/skills/local-kanban`, ejecutar `npm link` desde la raíz de ese checkout y repetir el preflight. Si la reparación falla, detener la mutación y reportar el problema. No sustituirla por edición directa de Markdown, SQLite o llamadas HTTP improvisadas.
+Antes de operar, ejecutar `local-kanban --help` y usar únicamente los subcomandos y opciones que anuncie la versión instalada. Si la CLI no está disponible, resolver el destino de `~/.agents/skills/local-kanban`, subir dos niveles desde `<checkout>/skills/local-kanban` hasta la raíz del checkout, comprobar allí `package.json` y ejecutar `npm link`. Repetir después el preflight. Si la skill no es un enlace canónico, no se encuentra el checkout o la reparación falla, detener la mutación y reportar el problema. No sustituirla por edición directa de Markdown, SQLite o llamadas HTTP improvisadas.
 
 ## Activación
 
@@ -43,7 +82,7 @@ Regenerar la cápsula completa tras resume, compactación o handoff. Tras una op
 
 ## Interfaz agent-first
 
-Usar este flujo mínimo; la CLI genera internamente IDs, timestamps y claves de idempotencia:
+Usar este flujo mínimo. Proporcionar IDs legibles `EPI-*` y `STO-*`; la CLI genera timestamps, revisiones, claves de idempotencia, IDs de intentos y fencing tokens:
 
 ```text
 local-kanban create-epic EPI-... --title "..." --objective "..." --json

@@ -37,13 +37,18 @@ Consulta la guía completa en [docs/INSTALLATION_AND_SETUP.md](docs/INSTALLATION
 
 ## Inicializar un proyecto consumidor
 
-Desde la raíz Git del proyecto que se va a desarrollar:
+Desde cualquier directorio del árbol Git del proyecto que se va a desarrollar, un agente sin
+contexto previo puede ejecutar el alta idempotente sin proporcionar ID ni nombre:
 
 ```bash
-local-kanban init --id mi-proyecto --name "Mi proyecto"
-local-kanban validate
-local-kanban doctor
+local-kanban --help
+local-kanban init --json
+local-kanban doctor --json
 ```
+
+La respuesta de `init` incluye `guidance.command` y ejemplos de las siguientes operaciones.
+La skill `$local-kanban` contiene el flujo mínimo de creación de épica e historia y los enums
+vigentes; la CLI rechaza opciones desconocidas o inválidas antes de persistir documentos.
 
 `doctor` ejecuta validación de schemas y DAG, recovery seguro, integridad SQLite,
 permisos/rutas, Git/worktrees y enlace de la skill. Devuelve `health: healthy|degraded`,
@@ -95,7 +100,10 @@ Estados visibles:
 backlog -> developing -> testing -> done
 ```
 
-Las historias usan IDs `STO-*`; las épicas, `EPI-*`. Readiness, bloqueos, claims, leases, intentos y revisión se gestionan mediante la skill y el núcleo de dominio, no mediante estados inventados ni edición libre del frontmatter.
+Las historias usan IDs `STO-*`; las épicas, `EPI-*`. Los tipos admitidos son `feature`, `bug`,
+`tech_debt`, `research` y `chore`; un spike exploratorio se registra como `research`. Readiness,
+bloqueos, claims, leases, intentos y revisión se gestionan mediante la skill y el núcleo de
+dominio, no mediante estados inventados ni edición libre del frontmatter.
 
 ## Verificación
 

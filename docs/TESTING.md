@@ -34,7 +34,7 @@ npm run release:verify
 | Dependencias | `npm audit --audit-level=high` | ausencia de vulnerabilidades high/critical conocidas |
 | Build | `npm run build` | bundle Vite que el servidor exige antes de arrancar |
 | HTTP/UI | `npm run test:e2e` | bootstrap, tablero, grafo, SSE, degradación visible, mutaciones fail-closed, recuperación y seguridad loopback |
-| Skill | `npm run test:skill` | symlink canónico, instalación idempotente y flujo consumidor aislado hasta `done` |
+| Skill | `npm run test:skill` | symlink canónico, instalación idempotente, alta sin ID/nombre, épica e historia tipada, errores fail-closed y flujo consumidor aislado hasta `done` |
 
 La suite E2E crea `.e2e/` desde `e2e/fixtures/source-project`; nunca opera sobre proyectos
 reales registrados por el usuario. Los documentos de ese directorio son fixtures, no
@@ -68,6 +68,11 @@ npm run test:skill
 `test:unit`, `test:quality` y `test:dogfood` son subconjuntos útiles durante desarrollo; no
 sustituyen el gate completo. `npm run skill:verify` comprueba el symlink personal de la máquina
 y se mantiene fuera del gate hermético porque depende del HOME real.
+
+El smoke aislado parte de un `HOME`, un registro y un repositorio Git temporales. Ejecuta
+`init` sin conocimiento de ID o nombre, crea una épica, comprueba que `spike` ofrece
+`research` como corrección sin persistir, rechaza un flag desconocido, crea una historia
+`research` válida y completa el flujo hasta `done` con `doctor=healthy` y colas vacías.
 
 ## CI y criterio de release
 

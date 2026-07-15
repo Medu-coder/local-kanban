@@ -90,6 +90,19 @@ test("verify rechaza instalaciones legacy", async () => {
   await expectFailure("verify", home, /legacy|divergentes/i);
 });
 
+test("la skill activa onboarding y contiene un arranque autónomo completo", async () => {
+  const contents = await fs.readFile(path.join(sourceDir, "SKILL.md"), "utf8");
+
+  assert.match(contents, /dar de alta este proyecto en Local Kanban/u);
+  assert.match(contents, /## Arranque autónomo sin contexto previo/u);
+  assert.match(contents, /local-kanban init --json/u);
+  assert.match(contents, /local-kanban create-epic EPI-001/u);
+  assert.match(contents, /local-kanban create-story STO-001/u);
+  assert.match(contents, /feature`, `bug`, `tech_debt`, `research`, `chore/u);
+  assert.match(contents, /Representar un spike exploratorio como `--story-type research`/u);
+  assert.doesNotMatch(contents, /la CLI genera internamente IDs/u);
+});
+
 test("un comando desconocido falla con ayuda breve", async () => {
   const home = await createHome();
   await expectFailure("unknown", home, /install\|verify/);

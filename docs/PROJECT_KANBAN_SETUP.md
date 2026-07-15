@@ -37,8 +37,12 @@ npm link
 
 ```bash
 cd /ruta/al/proyecto
-local-kanban init --id mi-proyecto --name "Mi proyecto"
+local-kanban init --json
 ```
+
+Sin `--id` ni `--name`, la CLI deriva ambos de la raíz Git. La respuesta JSON incluye el
+comando de diagnóstico que debe ejecutarse a continuación. Los overrides siguen disponibles
+cuando el humano necesita una identidad distinta.
 
 El comando:
 
@@ -103,7 +107,14 @@ La instalación personal de la skill se verifica por separado, desde el reposito
 - Estados funcionales: `backlog`, `developing`, `testing`, `done`.
 - Dependencias: `hard` o `related`; `blocks` se deriva.
 - Riesgo: `standard` o `high`; `high` requiere verificador independiente.
+- Tipo de historia: `feature`, `bug`, `tech_debt`, `research` o `chore`; usar `research`
+  para un spike exploratorio.
+- Modo de ejecución: `human`, `agent` o `hybrid`.
 - Una historia ready necesita objetivo observable, criterios de aceptación, dependencias, contexto relevante y validación ejecutable.
+
+Consultar siempre `local-kanban --help` en vez de inferir valores. La CLI falla con
+`option_invalid` y `details.allowed` ante un enum no soportado, y con `option_unknown` ante
+un flag desconocido; ninguno de esos errores debe crear un Markdown parcial.
 
 El schema versionado es la referencia de formato. No mantengas plantillas copiadas en cada proyecto: deja que la versión instalada de `$local-kanban` genere y valide los documentos.
 

@@ -44,33 +44,95 @@ async function main() {
     "La CLI global no apunta al binario de este checkout. Ejecuta npm link.",
   );
   const help = (await run("local-kanban", ["--help"], rootDir)).stdout;
-  for (const command of ["init", "create-story", "next", "claim", "check", "validate", "complete", "doctor"]) {
+  for (const command of ["init", "create-epic", "create-story", "next", "claim", "check", "validate", "complete", "doctor"]) {
     assert.match(help, new RegExp(`local-kanban ${command}\\b`, "u"));
   }
   assert.match(help, /slug minúsculo de 1-50 caracteres/u);
+  assert.match(help, /story-type feature\|bug\|tech_debt\|research\|chore/u);
+  assert.match(help, /execution-mode human\|agent\|hybrid/u);
+  assert.match(help, /Defaults: priority=medium, risk=standard, execution-mode=agent, story-type=feature/u);
+  assert.match(help, /spikes exploratorios usar --story-type research/u);
 
-  const consumerRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-skill-consumer-"));
-  const configPath = path.join(consumerRoot, ".config", "projects.json");
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-skill-consumer-"));
+  const consumerRoot = path.join(workspace, "consumer-project");
+  const configPath = path.join(workspace, ".config", "projects.json");
   try {
+    await fs.mkdir(consumerRoot, { recursive: true });
     await run("git", ["init", "-q", consumerRoot], consumerRoot, gitEnvironment);
     await fs.writeFile(path.join(consumerRoot, "README.md"), "# Skill consumer smoke\n", "utf8");
 
-    const initialized = await runKanban(["init", "--id", "skill-consumer", "--name", "Skill consumer"], consumerRoot, configPath);
-    assert.equal(initialized.project.id, "skill-consumer");
+    const initialized = await runKanban(["init"], consumerRoot, configPath);
+    assert.equal(initialized.project.id, "consumer-project");
+    assert.equal(initialized.project.name, "consumer-project");
+    assert.equal(initialized.guidance.command, "local-kanban doctor --json");
     await fs.access(path.join(consumerRoot, "docs", "kanban", "stories"));
     await fs.access(path.join(consumerRoot, "docs", "kanban", "epics"));
     assert.match(await fs.readFile(path.join(consumerRoot, "AGENTS.md"), "utf8"), /\$local-kanban/u);
     assert.match(await fs.readFile(path.join(consumerRoot, ".gitignore"), "utf8"), /^\.local-kanban\/$/mu);
 
     await runKanban([
+      "create-epic", "EPI-SMOKE",
+      "--title", "Onboarding autónomo",
+      "--objective", "Demostrar alta y gestión desde una skill sin contexto previo",
+    ], consumerRoot, configPath);
+
+    await assert.rejects(
+      runKanban([
+        "create-story", "STO-INVALID",
+        "--title", "Spike no canónico",
+        "--objective", "Comprobar diagnóstico accionable",
+        "--acceptance", "Error explícito",
+        "--validation-command", "node -e \"process.exit(0)\"",
+        "--context", "README.md",
+        "--story-type", "spike",
+      ], consumerRoot, configPath),
+      (error) => {
+        const payload = JSON.parse(error.stderr);
+        assert.equal(payload.error, "option_invalid");
+        assert.equal(payload.details.received, "spike");
+        assert.ok(payload.details.allowed.includes("research"));
+        assert.match(payload.details.suggestion, /research/u);
+        return true;
+      },
+    );
+    await assert.rejects(
+      fs.access(path.join(consumerRoot, "docs", "kanban", "stories", "STO-INVALID.md")),
+    );
+
+    await assert.rejects(
+      runKanban([
+        "create-story", "STO-UNKNOWN",
+        "--title", "Flag desconocido",
+        "--objective", "No ignorar intención del agente",
+        "--acceptance", "Error explícito",
+        "--validation-command", "node -e \"process.exit(0)\"",
+        "--context", "README.md",
+        "--story-type", "research",
+        "--unknown-option", "value",
+      ], consumerRoot, configPath),
+      (error) => {
+        assert.equal(JSON.parse(error.stderr).error, "option_unknown");
+        return true;
+      },
+    );
+
+    const created = await runKanban([
       "create-story", "STO-SMOKE",
       "--title", "Verificar skill instalada",
       "--objective", "Completar un flujo standard desde un consumidor limpio",
       "--acceptance", "Smoke verificado",
-      "--validation", "node -e \"process.exit(0)\"",
+      "--validation-command", "node -e \"const value='a,b'; process.exit(value.includes(',') ? 0 : 1)\"",
       "--context", "README.md",
       "--subtasks", "Ejecutar smoke",
+      "--epic", "EPI-SMOKE",
+      "--story-type", "research",
+      "--execution-mode", "agent",
     ], consumerRoot, configPath);
+    assert.equal(created.story.epic, "EPI-SMOKE");
+    assert.equal(created.story.story_type, "research");
+    assert.equal(created.story.execution_mode, "agent");
+    assert.equal(created.story.priority, "medium");
+    assert.equal(created.story.risk, "standard");
     await run("git", ["add", "."], consumerRoot, gitEnvironment);
     await run("git", ["commit", "-qm", "plan skill smoke"], consumerRoot, gitEnvironment);
 
@@ -122,7 +184,7 @@ async function main() {
       },
     }, null, 2));
   } finally {
-    await fs.rm(consumerRoot, { recursive: true, force: true });
+    await fs.rm(workspace, { recursive: true, force: true });
   }
 }
 

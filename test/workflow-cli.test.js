@@ -47,6 +47,49 @@ function finishedStory(overrides = {}) {
   });
 }
 
+test("CLI rechaza opciones desconocidas y rank inválido sin crear historias", async () => {
+  const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-strict-cli-"));
+  const configPath = path.join(rootPath, ".config", "projects.json");
+  await git(rootPath, ["init", "-q"]);
+  try {
+    await fs.writeFile(path.join(rootPath, "README.md"), "# Strict CLI\n", "utf8");
+    await runCli(["init", "--json"], rootPath, configPath);
+    const base = [
+      "create-story", "STO-STRICT", "--title", "Strict", "--objective", "No ignorar intención",
+      "--acceptance", "Error explícito", "--validation-command", "node -e \"process.exit(0)\"",
+      "--context", "README.md",
+    ];
+    await assert.rejects(
+      runCli([...base, "--unknown-option", "value", "--json"], rootPath, configPath),
+      (error) => error.code === 2 && /option_unknown/u.test(error.stderr),
+    );
+    await assert.rejects(
+      runCli([...base, "--owner", "nobody", "--json"], rootPath, configPath),
+      (error) => error.code === 2 && /no pertenece al comando create-story/u.test(error.stderr),
+    );
+    await assert.rejects(
+      runCli([...base, "--rank", "first", "--json"], rootPath, configPath),
+      (error) => error.code === 2 && /option_invalid/u.test(error.stderr),
+    );
+    await assert.rejects(
+      runCli([...base, "EXTRA", "--json"], rootPath, configPath),
+      (error) => error.code === 2 && /argumentos posicionales adicionales/u.test(error.stderr),
+    );
+    await assert.rejects(
+      runCli(["create-epic", "EPI-MISSING", "--title", "--objective", "Objective", "--json"], rootPath, configPath),
+      (error) => error.code === 2 && /option_value_missing/u.test(error.stderr),
+    );
+    await assert.rejects(
+      fs.access(path.join(rootPath, "docs", "kanban", "stories", "STO-STRICT.md")),
+    );
+    await assert.rejects(
+      fs.access(path.join(rootPath, "docs", "kanban", "epics", "EPI-MISSING.md")),
+    );
+  } finally {
+    await fs.rm(rootPath, { recursive: true, force: true });
+  }
+});
+
 test("CLI ejecuta claim, checkpoint, validate y complete con lease y evidencia", async () => {
   const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), "local-kanban-workflow-cli-"));
   const configPath = path.join(rootPath, ".config", "projects.json");
